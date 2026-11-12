@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:spideyhood/game/actors/enemies/thug.dart';
 import 'package:spideyhood/game/actors/enemies/viper_boss.dart';
 import 'package:spideyhood/game/actors/enemies/viper_guard.dart';
+import 'package:spideyhood/game/actors/enemies/minion_with_gun.dart';
+import 'package:spideyhood/game/components/web_mark.dart';
 
 /// Web projectile shot during Spidey's Skill 1 attack.
 /// Emerges right from Spidey's outstretched hand and travels rapidly horizontally.
@@ -38,18 +40,14 @@ class WebAmmo extends PositionComponent with CollisionCallbacks, HasGameReferenc
     await super.onLoad();
     add(RectangleHitbox());
 
-    // Load updated ammo sprite (web_shoot.png, 325x50)
+    // Load web ammo sprite using web swing strand asset
     try {
-      _ammoSprite = await Sprite.load('player/skill_1/web_shoot.png');
+      _ammoSprite = await Sprite.load('player/web_swing/1.png');
     } catch (_) {
       try {
-        _ammoSprite = await Sprite.load('player/skill_1/4.png');
+        _ammoSprite = await Sprite.load('player/skill_1/web_shoot.png');
       } catch (_) {
-        try {
-          _ammoSprite = await Sprite.load('player/skill_1/weebshoot.png');
-        } catch (_) {
-          _ammoSprite = null;
-        }
+        _ammoSprite = null;
       }
     }
   }
@@ -68,6 +66,7 @@ class WebAmmo extends PositionComponent with CollisionCallbacks, HasGameReferenc
       for (final boss in parent!.children.whereType<ViperBoss>()) {
         if (boss.bossState != BossState.escaped && ammoBox.overlaps(boss.toRect())) {
           boss.hitByWeb(direction);
+          parent?.add(WebMark(position: position.clone()));
           removeFromParent();
           return;
         }
@@ -75,6 +74,15 @@ class WebAmmo extends PositionComponent with CollisionCallbacks, HasGameReferenc
       for (final guard in parent!.children.whereType<ViperGuard>()) {
         if (!guard.isDefeated && ammoBox.overlaps(guard.toRect())) {
           guard.hitByWeb(direction);
+          parent?.add(WebMark(position: position.clone()));
+          removeFromParent();
+          return;
+        }
+      }
+      for (final gunMinion in parent!.children.whereType<MinionWithGun>()) {
+        if (!gunMinion.isDefeated && ammoBox.overlaps(gunMinion.toRect())) {
+          gunMinion.hitByWeb(direction);
+          parent?.add(WebMark(position: position.clone()));
           removeFromParent();
           return;
         }
@@ -82,6 +90,7 @@ class WebAmmo extends PositionComponent with CollisionCallbacks, HasGameReferenc
       for (final thug in parent!.children.whereType<Thug>()) {
         if (!thug.isDefeated && ammoBox.overlaps(thug.toRect())) {
           thug.takeDamage(35, direction);
+          parent?.add(WebMark(position: position.clone()));
           removeFromParent();
           return;
         }
@@ -100,12 +109,15 @@ class WebAmmo extends PositionComponent with CollisionCallbacks, HasGameReferenc
 
     if (other is Thug && !other.isDefeated) {
       other.takeDamage(35, direction);
+      parent?.add(WebMark(position: position.clone()));
       removeFromParent();
     } else if (other is ViperBoss && other.bossState != BossState.escaped) {
       other.hitByWeb(direction);
+      parent?.add(WebMark(position: position.clone()));
       removeFromParent();
     } else if (other is ViperGuard && !other.isDefeated) {
       other.hitByWeb(direction);
+      parent?.add(WebMark(position: position.clone()));
       removeFromParent();
     }
   }

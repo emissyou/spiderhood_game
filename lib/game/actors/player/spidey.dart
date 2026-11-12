@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:spideyhood/game/actors/enemies/thug.dart';
 import 'package:spideyhood/game/actors/enemies/viper_boss.dart';
 import 'package:spideyhood/game/actors/enemies/viper_guard.dart';
+import 'package:spideyhood/game/actors/enemies/minion_with_gun.dart';
 import 'package:spideyhood/game/components/building.dart';
 import 'package:spideyhood/game/components/damage_number.dart';
 import 'package:spideyhood/game/components/ground.dart';
@@ -38,6 +39,7 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
   Vector2 velocity = Vector2.zero();
   bool isGrounded = false;
   bool isFacingRight = true;
+  bool ignorePlatformLanding = false;
   SpideyState state = SpideyState.idle;
 
   // Custom player sprite assets
@@ -45,12 +47,12 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
   int _currentIdleIndex = 0;
   double _idleTimer = 0.0;
 
-  // Jump animation sprites: swing/1.png through swing/5.png
+  // Jump animation sprites: swing/2.png
   final List<Sprite> _jumpSprites = [];
   int _currentJumpIndex = 0;
   double _jumpTimer = 0.0;
 
-  // Active web-swinging sprite: swing/6.png
+  // Active web-swinging sprite: swing/1.png
   Sprite? _webSwingSprite;
 
   // Punch animation frames: attack/punch_1/1.png to 4.png (18 damage)
@@ -69,22 +71,19 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
   double _walkTimer = 0.0;
 
   static const List<_IdleFrameData> _walkFrameData = [
-    _IdleFrameData(imgW: 182, imgH: 242, centerX: 82.0, feetY: 208.0, scaleRefH: 165.0),
-    _IdleFrameData(imgW: 136, imgH: 242, centerX: 60.0, feetY: 208.0, scaleRefH: 165.0),
-    _IdleFrameData(imgW: 136, imgH: 242, centerX: 60.0, feetY: 208.0, scaleRefH: 165.0),
+    _IdleFrameData(imgW: 192, imgH: 256, centerX: 96.0, feetY: 255.0, scaleRefH: 228.0),
+    _IdleFrameData(imgW: 179, imgH: 239, centerX: 89.5, feetY: 238.0, scaleRefH: 237.0),
   ];
 
-  // Skill 1 animation sprites: skill_1/1.png to skill_1/3.png
+  // Skill 1 animation sprites: attack/skill_1/1.png
   final List<Sprite> _skill1Sprites = [];
   int _currentSkill1Index = 0;
   double _skill1Timer = 0.0;
   bool _hasFiredSkill1Ammo = false;
-  static const double skill1Duration = 0.42;
+  static const double skill1Duration = 0.38;
 
   static const List<_IdleFrameData> _skill1FrameData = [
-    _IdleFrameData(imgW: 225, imgH: 167, centerX: 85.0, feetY: 166.0, scaleRefH: 154.0),
-    _IdleFrameData(imgW: 227, imgH: 167, centerX: 81.0, feetY: 166.0, scaleRefH: 154.0),
-    _IdleFrameData(imgW: 160, imgH: 167, centerX: 71.0, feetY: 166.0, scaleRefH: 154.0),
+    _IdleFrameData(imgW: 210, imgH: 280, centerX: 104.5, feetY: 277.0, scaleRefH: 230.0),
   ];
 
   // Web strand sprites: swing_one.png & swing_two.png (randomly chosen on shoot)
@@ -92,50 +91,33 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
   int _selectedWebIndex = 0;
   final math.Random _random = math.Random();
 
-  // Idle frame durations: frames 1..8 slower and smoother (0.38s), frames 9..11 fast animation (0.075s)
+  // Idle frame durations: frames 1..8 (0.18s per frame for smooth natural breathing)
   static const List<double> idleFrameDurations = [
-    0.38, // Frame 1: slow, smooth breath
-    0.38, // Frame 2: slow, smooth breath
-    0.38, // Frame 3: slow, smooth breath
-    0.38, // Frame 4: slow, smooth breath
-    0.38, // Frame 5: slow, smooth breath
-    0.38, // Frame 6: slow, smooth breath
-    0.38, // Frame 7: slow, smooth breath
-    0.38, // Frame 8: slow, smooth breath
-    0.075, // Frame 9:  fast animation snap
-    0.075, // Frame 10: fast animation snap
-    0.075, // Frame 11: fast animation snap
+    0.18, 0.18, 0.18, 0.18, 0.18, 0.18, 0.18, 0.18,
   ];
 
-  // Punch frame metadata (frames 1..4 in punch_1)
+  // Punch frame metadata (frames 1..2 in attack/punch/)
   static const List<_IdleFrameData> _punchFrameData = [
-    _IdleFrameData(imgW: 194, imgH: 242, centerX: 78.0, feetY: 208.0, scaleRefH: 165.0),
-    _IdleFrameData(imgW: 136, imgH: 242, centerX: 60.0, feetY: 208.0, scaleRefH: 165.0),
-    _IdleFrameData(imgW: 194, imgH: 242, centerX: 76.0, feetY: 208.0, scaleRefH: 165.0),
-    _IdleFrameData(imgW: 194, imgH: 242, centerX: 77.0, feetY: 205.0, scaleRefH: 165.0),
+    _IdleFrameData(imgW: 173, imgH: 231, centerX: 83.0, feetY: 228.0, scaleRefH: 229.0),
+    _IdleFrameData(imgW: 210, imgH: 280, centerX: 104.5, feetY: 277.0, scaleRefH: 230.0),
   ];
 
-  // Kick frame metadata (frames 5..8 in punch_2)
+  // Kick frame metadata (frames 1..2 in attack/kick/)
   static const List<_IdleFrameData> _kickFrameData = [
-    _IdleFrameData(imgW: 136, imgH: 242, centerX: 55.0, feetY: 208.0, scaleRefH: 165.0),
-    _IdleFrameData(imgW: 136, imgH: 242, centerX: 50.0, feetY: 209.0, scaleRefH: 165.0),
-    _IdleFrameData(imgW: 182, imgH: 242, centerX: 72.0, feetY: 205.0, scaleRefH: 165.0),
-    _IdleFrameData(imgW: 194, imgH: 242, centerX: 65.0, feetY: 207.0, scaleRefH: 165.0),
+    _IdleFrameData(imgW: 189, imgH: 252, centerX: 100.5, feetY: 251.0, scaleRefH: 251.0),
+    _IdleFrameData(imgW: 222, imgH: 296, centerX: 112.5, feetY: 295.0, scaleRefH: 256.0),
   ];
 
   // Feet and center alignment data to ensure perfectly grounded, smooth frame transitions
   static const List<_IdleFrameData> _idleFrameData = [
-    _IdleFrameData(imgW: 207, imgH: 368, centerX: 124.0, feetY: 321.0, scaleRefH: 248.0),
-    _IdleFrameData(imgW: 60, imgH: 126, centerX: 30.0, feetY: 125.0, scaleRefH: 122.0),
-    _IdleFrameData(imgW: 105, imgH: 114, centerX: 52.0, feetY: 113.0, scaleRefH: 122.0),
-    _IdleFrameData(imgW: 81, imgH: 104, centerX: 42.5, feetY: 103.0, scaleRefH: 122.0),
-    _IdleFrameData(imgW: 123, imgH: 120, centerX: 61.0, feetY: 119.0, scaleRefH: 122.0),
-    _IdleFrameData(imgW: 139, imgH: 163, centerX: 69.5, feetY: 162.0, scaleRefH: 122.0),
-    _IdleFrameData(imgW: 81, imgH: 117, centerX: 38.0, feetY: 115.0, scaleRefH: 122.0),
-    _IdleFrameData(imgW: 94, imgH: 116, centerX: 46.5, feetY: 115.0, scaleRefH: 122.0),
-    _IdleFrameData(imgW: 154, imgH: 122, centerX: 75.0, feetY: 105.0, scaleRefH: 122.0),
-    _IdleFrameData(imgW: 67, imgH: 186, centerX: 33.5, feetY: 162.0, scaleRefH: 122.0),
-    _IdleFrameData(imgW: 106, imgH: 120, centerX: 55.0, feetY: 113.0, scaleRefH: 122.0),
+    _IdleFrameData(imgW: 148, imgH: 263, centerX: 71.5, feetY: 262.0, scaleRefH: 255.0),
+    _IdleFrameData(imgW: 148, imgH: 263, centerX: 74.0, feetY: 262.0, scaleRefH: 256.0),
+    _IdleFrameData(imgW: 147, imgH: 261, centerX: 72.5, feetY: 260.0, scaleRefH: 253.0),
+    _IdleFrameData(imgW: 141, imgH: 251, centerX: 68.0, feetY: 250.0, scaleRefH: 251.0),
+    _IdleFrameData(imgW: 142, imgH: 252, centerX: 69.5, feetY: 251.0, scaleRefH: 251.0),
+    _IdleFrameData(imgW: 142, imgH: 253, centerX: 63.5, feetY: 251.0, scaleRefH: 252.0),
+    _IdleFrameData(imgW: 140, imgH: 248, centerX: 71.5, feetY: 247.0, scaleRefH: 248.0),
+    _IdleFrameData(imgW: 141, imgH: 251, centerX: 67.5, feetY: 250.0, scaleRefH: 251.0),
   ];
 
   // Web-swinging state
@@ -144,8 +126,6 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
 
   // Cached paint objects to guarantee 0 per-frame GC allocations
   final Paint _shadowPaint = Paint();
-  final Paint _blendPaintA = Paint();
-  final Paint _blendPaintB = Paint();
   static final Paint _fallbackWebPaint = Paint()
     ..color = Colors.white.withValues(alpha: 0.85)
     ..style = PaintingStyle.stroke
@@ -164,9 +144,21 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
   double _moveInput = 0.0;
   int _jumpCount = 0;
   WarehousePlatform? currentPlatform;
+  double _platformDropTimer = 0.0;
 
-  // Combat state
-  int health = GameConfig.playerMaxHealth;
+  // Combat state (5 Hearts system, Web Fluid limit & Skill Cooldown)
+  static const int maxHealth = 5;
+  int health = maxHealth;
+  bool get isDefeated => health <= 0;
+  static const int maxWebFluid = 10;
+  double webFluid = 10.0;
+  static const double webFluidRegenRate = 0.75;
+  static const double skill1CooldownMax = 3.0;
+  double skill1Cooldown = 0.0;
+  double shieldTimer = 0.0;
+  double _invulnerableTimer = 0.0;
+  bool? isGodMode;
+  bool get activeGodMode => isGodMode ?? GameConfig.godMode;
 
   // World bounds for current level/stage
   final double groundLevel;
@@ -177,6 +169,7 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
     Vector2? size,
     this.groundLevel = GameConfig.groundY,
     this.worldWidth = GameConfig.bgWidth,
+    this.isGodMode,
   }) : super(
           position: position,
           size: size ?? GameConfig.playerSize,
@@ -188,73 +181,90 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
     await super.onLoad();
     add(RectangleHitbox());
 
-    // Load all idle animation frames 1..11
+    // Load all idle animation frames (1..8 in player/idle/)
     _idleSprites.clear();
-    for (int i = 1; i <= 11; i++) {
+    for (int i = 1; i <= 8; i++) {
       try {
         final s = await Sprite.load('player/idle/$i.png');
         _idleSprites.add(s);
       } catch (_) {}
     }
 
-    // Jump animation frames: swing/1.png to swing/5.png
+    // Jump animation frame: swing/2.png
     _jumpSprites.clear();
-    for (int i = 1; i <= 5; i++) {
-      try {
-        final s = await Sprite.load('player/swing/$i.png');
-        _jumpSprites.add(s);
-      } catch (_) {}
-    }
-
-    // Active web-swinging sprite: swing/6.png
     try {
-      _webSwingSprite = await Sprite.load('player/swing/6.png');
+      final s = await Sprite.load('player/swing/2.png');
+      _jumpSprites.add(s);
     } catch (_) {
-      _webSwingSprite = null;
+      for (int i = 1; i <= 5; i++) {
+        try {
+          final s = await Sprite.load('player/swing/$i.png');
+          _jumpSprites.add(s);
+        } catch (_) {}
+      }
     }
 
-    // Load punch_1 animation frames (1..4)
-    _punchSprites.clear();
-    for (int i = 1; i <= 4; i++) {
+    // Active web-swinging sprite: swing/1.png
+    try {
+      _webSwingSprite = await Sprite.load('player/swing/1.png');
+    } catch (_) {
       try {
-        final s = await Sprite.load('player/attack/punch_1/$i.png');
+        _webSwingSprite = await Sprite.load('player/swing/6.png');
+      } catch (_) {
+        _webSwingSprite = null;
+      }
+    }
+
+    // Load punch animation frames (1..2 in attack/punch/)
+    _punchSprites.clear();
+    for (int i = 1; i <= 2; i++) {
+      try {
+        final s = await Sprite.load('player/attack/punch/$i.png');
         _punchSprites.add(s);
       } catch (_) {
         try {
-          final s = await Sprite.load('player/attack/$i.png');
+          final s = await Sprite.load('player/attack/punch_1/$i.png');
           _punchSprites.add(s);
         } catch (_) {}
       }
     }
 
-    // Load punch_2 (kick) animation frames (5..8)
+    // Load kick animation frames (1..2 in attack/kick/)
     _kickSprites.clear();
-    for (int i = 5; i <= 8; i++) {
+    for (int i = 1; i <= 2; i++) {
       try {
-        final s = await Sprite.load('player/attack/punch_2/$i.png');
+        final s = await Sprite.load('player/attack/kick/$i.png');
         _kickSprites.add(s);
       } catch (_) {
         try {
-          final s = await Sprite.load('player/attack/$i.png');
+          final s = await Sprite.load('player/attack/punch_2/${i + 4}.png');
           _kickSprites.add(s);
         } catch (_) {}
       }
     }
 
-    // Walking animation frames: walking/2.png to walking/4.png
+    // Running animation frames: running/1.png to running/2.png
     _walkSprites.clear();
-    for (int i = 2; i <= 4; i++) {
+    for (int i = 1; i <= 2; i++) {
       try {
-        final s = await Sprite.load('player/walking/$i.png');
+        final s = await Sprite.load('player/running/$i.png');
         _walkSprites.add(s);
-      } catch (_) {}
+      } catch (_) {
+        try {
+          final s = await Sprite.load('player/walking/$i.png');
+          _walkSprites.add(s);
+        } catch (_) {}
+      }
     }
 
-    // Skill 1 animation frames: skill_1/1.png to skill_1/3.png
+    // Skill 1 animation frame: attack/skill_1/1.png
     _skill1Sprites.clear();
-    for (int i = 1; i <= 3; i++) {
+    try {
+      final s = await Sprite.load('player/attack/skill_1/1.png');
+      _skill1Sprites.add(s);
+    } catch (_) {
       try {
-        final s = await Sprite.load('player/skill_1/$i.png');
+        final s = await Sprite.load('player/skill_1/1.png');
         _skill1Sprites.add(s);
       } catch (_) {}
     }
@@ -316,8 +326,36 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
     }
   }
 
+  /// Drop down from an elevated platform
+  void dropDownPlatform() {
+    if (state == SpideyState.swinging) {
+      releaseWeb();
+    }
+    if (currentPlatform != null || (isGrounded && position.y < groundLevel - 15.0)) {
+      currentPlatform = null;
+      isGrounded = false;
+      ignorePlatformLanding = true;
+      _platformDropTimer = 0.35; // allow falling through the current platform
+      position.y += 8.0;
+      velocity.y = 120.0;
+      state = SpideyState.jumping;
+      _jumpTimer = 0.0;
+      _currentJumpIndex = 0;
+      _jumpCount = 1;
+    }
+  }
+
   /// Fire a web at any target anchor point
   void shootWeb(Vector2 targetAnchor) {
+    if (!activeGodMode && webFluid < 1.0) {
+      AudioManager.instance.playButtonClick();
+      return;
+    }
+    if (!activeGodMode) {
+      webFluid = math.max(0.0, webFluid - 1.0);
+    } else {
+      webFluid = maxWebFluid.toDouble();
+    }
     currentPlatform = null;
     // If target is too low, raise it slightly so Spidey can swing
     final effectiveAnchor = targetAnchor.y >= position.y - 40
@@ -435,57 +473,129 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
       height: size.y * 1.6, // Generous vertical tolerance for platforms and jump attacks
     );
 
-    bool didHit = false;
+    // Single target focus: do damage one at a time to the closest enemy
+    PositionComponent? closestEnemy;
+    double closestDist = double.infinity;
 
     for (final comp in parent!.children.whereType<Thug>().toList()) {
       if (!comp.isDefeated && attackBox.overlaps(comp.toRect())) {
-        comp.takeDamage(damage, dir * (knockback / 320.0));
-        didHit = true;
+        final d = (comp.position.x - position.x).abs();
+        if (d < closestDist) {
+          closestDist = d;
+          closestEnemy = comp;
+        }
       }
     }
 
     for (final comp in parent!.children.whereType<ViperGuard>().toList()) {
       if (!comp.isDefeated && attackBox.overlaps(comp.toRect())) {
-        comp.takeDamage(damage, dir * (knockback / 320.0));
-        didHit = true;
+        final d = (comp.position.x - position.x).abs();
+        if (d < closestDist) {
+          closestDist = d;
+          closestEnemy = comp;
+        }
       }
     }
 
     for (final comp in parent!.children.whereType<ViperBoss>().toList()) {
       if (comp.bossState != BossState.escaped && attackBox.overlaps(comp.toRect())) {
-        comp.takeDamage(damage, dir * (knockback / 320.0));
-        didHit = true;
+        final d = (comp.position.x - position.x).abs();
+        if (d < closestDist) {
+          closestDist = d;
+          closestEnemy = comp;
+        }
       }
     }
 
-    if (didHit) {
+    for (final comp in parent!.children.whereType<MinionWithGun>().toList()) {
+      if (!comp.isDefeated && attackBox.overlaps(comp.toRect())) {
+        final d = (comp.position.x - position.x).abs();
+        if (d < closestDist) {
+          closestDist = d;
+          closestEnemy = comp;
+        }
+      }
+    }
+
+    if (closestEnemy != null) {
+      if (closestEnemy is Thug) {
+        closestEnemy.takeDamage(damage, dir * (knockback / 320.0));
+      } else if (closestEnemy is ViperGuard) {
+        closestEnemy.takeDamage(damage, dir * (knockback / 320.0));
+      } else if (closestEnemy is ViperBoss) {
+        closestEnemy.takeDamage(damage, dir * (knockback / 320.0));
+      } else if (closestEnemy is MinionWithGun) {
+        closestEnemy.takeDamage(damage, dir * (knockback / 320.0));
+      }
       _hasHitInCurrentAttack = true;
     }
   }
 
-  /// Take damage from enemies or boss attacks
+  /// Take damage from enemies or boss attacks (5 Hearts system with invulnerability & shield)
   void takeDamage(int amount) {
     if (health <= 0) return;
-    health = math.max(0, health - amount);
+    if (activeGodMode) {
+      // In Godmode, Spidey is completely invincible (infinite health)
+      health = maxHealth;
+      AudioManager.instance.playButtonClick();
+      Future.microtask(() {
+        if (parent != null) {
+          parent?.add(
+            DamageNumber(
+              amount: 0,
+              position: position - Vector2(0, size.y + 12.0),
+              color: const Color(0xFFFACC15),
+            ),
+          );
+        }
+      });
+      return;
+    }
+    if (shieldTimer > 0) {
+      AudioManager.instance.playButtonClick();
+      Future.microtask(() {
+        if (parent != null) {
+          parent?.add(
+            DamageNumber(
+              amount: 0,
+              position: position - Vector2(0, size.y + 12.0),
+              color: const Color(0xFFFACC15),
+            ),
+          );
+        }
+      });
+      return;
+    }
+    if (_invulnerableTimer > 0) return;
+
+    _invulnerableTimer = 0.8;
+    final heartDamage = amount >= 30 ? 2 : 1;
+    health = math.max(0, health - heartDamage);
     AudioManager.instance.playPunch();
 
-    // Spawn damage indicator above Spider-Man
-    parent?.add(
-      DamageNumber(
-        amount: amount,
-        position: position - Vector2(0, size.y + 12.0),
-        color: const Color(0xFFEF4444),
-      ),
-    );
+    // Spawn damage indicator above Spider-Man safely
+    Future.microtask(() {
+      if (parent != null) {
+        parent?.add(
+          DamageNumber(
+            amount: heartDamage,
+            position: position - Vector2(0, size.y + 12.0),
+            color: const Color(0xFFEF4444),
+          ),
+        );
+      }
+    });
   }
 
-  /// Perform Skill 1 (Web Shot projectile blast, 35 damage)
+  /// Perform Skill 1 (Web Shot projectile blast, 35 damage, 3.0s cooldown)
   void useSkill1() {
+    if (!activeGodMode && skill1Cooldown > 0) return;
     if (state == SpideyState.attacking || state == SpideyState.kicking || state == SpideyState.skill1) return;
     if (state == SpideyState.swinging) {
       releaseWeb();
     }
 
+    skill1Cooldown = activeGodMode ? 0.0 : skill1CooldownMax;
     state = SpideyState.skill1;
     _skill1Timer = skill1Duration;
     _currentSkill1Index = 0;
@@ -496,8 +606,8 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
   void _fireSkill1Ammo() {
     if (parent == null) return;
     final dir = isFacingRight ? 1.0 : -1.0;
-    final handX = position.x + dir * (size.x * 0.75);
-    final handY = position.y - (size.y * 0.55);
+    final handX = position.x + dir * (size.x * 0.82);
+    final handY = position.y - (size.y * 0.735);
     const ammoW = 78.0;
     final spawnPos = Vector2(handX + dir * (ammoW * 0.5), handY);
     final ammo = WebAmmo(
@@ -511,6 +621,25 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
   @override
   void update(double dt) {
     super.update(dt);
+
+    // Timers: Invulnerability, Shield, Skill Cooldown & Fast Web Fluid Regeneration
+    if (_platformDropTimer > 0) {
+      _platformDropTimer = math.max(0.0, _platformDropTimer - dt);
+      if (_platformDropTimer <= 0) {
+        ignorePlatformLanding = false;
+      }
+    }
+
+    if (activeGodMode) {
+      health = maxHealth;
+      webFluid = maxWebFluid.toDouble();
+      skill1Cooldown = 0.0;
+    } else {
+      if (_invulnerableTimer > 0) _invulnerableTimer = math.max(0.0, _invulnerableTimer - dt);
+      if (shieldTimer > 0) shieldTimer = math.max(0.0, shieldTimer - dt);
+      if (skill1Cooldown > 0) skill1Cooldown = math.max(0.0, skill1Cooldown - dt);
+      webFluid = math.min(maxWebFluid.toDouble(), webFluid + (webFluidRegenRate * dt));
+    }
 
     // Update animated idle sequence (frames 1..8 slower and relaxed, 9..11 fast animation)
     if (state == SpideyState.idle && isGrounded) {
@@ -556,16 +685,15 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
       _walkTimer += dt * (velocity.x.abs() / GameConfig.walkSpeed).clamp(0.5, 1.5);
       const walkStepDuration = 0.14;
       if (_walkSprites.isNotEmpty) {
-        final cycleStep = (_walkTimer / walkStepDuration).floor() % 4;
-        const walkCycleMap = [0, 1, 2, 1];
-        _currentWalkIndex = walkCycleMap[cycleStep];
+        final cycleStep = (_walkTimer / walkStepDuration).floor() % _walkSprites.length;
+        _currentWalkIndex = cycleStep.clamp(0, _walkSprites.length - 1);
       }
     } else {
       _walkTimer = 0.0;
       _currentWalkIndex = 0;
     }
 
-    // Punch attack sequence (Punch 1, frames 1..4)
+    // Punch attack sequence (Punch, frames 1..2 in attack/punch/)
     if (state == SpideyState.attacking) {
       attackTimer -= dt;
       final elapsed = punchDuration - attackTimer;
@@ -581,7 +709,7 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
       }
     }
 
-    // Kick attack sequence (Punch 2 / Kick, frames 5..8)
+    // Kick attack sequence (Kick, frames 1..2 in attack/kick/)
     if (state == SpideyState.kicking) {
       attackTimer -= dt;
       final elapsed = kickDuration - attackTimer;
@@ -602,16 +730,10 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
       _skill1Timer -= dt;
       final elapsed = skill1Duration - _skill1Timer;
       if (_skill1Sprites.isNotEmpty) {
-        if (elapsed < 0.10) {
-          _currentSkill1Index = 0;
-        } else if (elapsed < 0.22) {
-          _currentSkill1Index = 1;
-        } else {
-          _currentSkill1Index = 2;
-        }
-        _currentSkill1Index = _currentSkill1Index.clamp(0, _skill1Sprites.length - 1);
+        final frameDuration = skill1Duration / _skill1Sprites.length;
+        _currentSkill1Index = (elapsed / frameDuration).floor().clamp(0, _skill1Sprites.length - 1);
       }
-      if (!_hasFiredSkill1Ammo && elapsed >= 0.12) {
+      if (!_hasFiredSkill1Ammo && elapsed >= 0.10) {
         _hasFiredSkill1Ammo = true;
         _fireSkill1Ammo();
       }
@@ -795,6 +917,11 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
   void onCollision(Set<Vector2> intersectionPoints, PositionComponent other) {
     super.onCollision(intersectionPoints, other);
 
+    // During special cutscenes, do not prematurely land on platforms
+    if (ignorePlatformLanding && other is WarehousePlatform) {
+      return;
+    }
+
     if (other is Building || other is Ground || other is WarehousePlatform) {
       final surfaceTop = other.position.y;
       final playerBottom = position.y;
@@ -843,10 +970,10 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
 
     // Draw the Web line if currently swinging
     if (webAnchor != null) {
-      // Exact hand position on Spidey's outstretched arm in swing/6.png
-      final handDrawW = size.y * (202 / 252);
-      final handLocalX = isFacingRight ? (handDrawW * 0.36) : (-handDrawW * 0.36);
-      final handLocalY = -size.y * 0.76;
+      // Exact hand position on Spidey's outstretched arm in swing/1.png
+      final handDrawW = size.y * (_webSwingSprite != null ? (_webSwingSprite!.srcSize.x / _webSwingSprite!.srcSize.y) : (179 / 239));
+      final handLocalX = isFacingRight ? (handDrawW * 0.28) : (-handDrawW * 0.28);
+      final handLocalY = -size.y * 0.96;
       final handOffset = Offset(handLocalX, handLocalY);
       final localAnchor = (webAnchor! - position).toOffset();
 
@@ -882,6 +1009,24 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
       }
     }
 
+    // Invulnerable Shield Bubble (golden barrier active for 1 second)
+    if (shieldTimer > 0) {
+      final shieldPaint = Paint()
+        ..color = const Color(0xFFFACC15).withValues(alpha: 0.35)
+        ..style = PaintingStyle.fill;
+      final borderPaint = Paint()
+        ..color = const Color(0xFFEAB308).withValues(alpha: 0.9)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+      final shieldRect = Rect.fromCenter(
+        center: Offset(0, -size.y * 0.5),
+        width: size.x * 1.5,
+        height: size.y * 1.25,
+      );
+      canvas.drawOval(shieldRect, shieldPaint);
+      canvas.drawOval(shieldRect, borderPaint);
+    }
+
     // Flip horizontally when facing left
     if (!isFacingRight) {
       canvas.save();
@@ -891,8 +1036,8 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
     // Select active sprite according to state:
     // 0. When casting Skill 1 (Web Shot): skill_1 animation (1..3)
     // 1. When punching / attacking: attack animation (1..8)
-    // 2. When swinging on a web: swing/6.png
-    // 3. When jumping or web released in air: swing/1..5.png
+    // 2. When swinging on a web: swing/1.png
+    // 3. When jumping or web released in air: swing/2.png
     // 4. When idle on the ground: animated idle sequence (1..11) with smooth cross-fade
     // 5. When running / moving: walking animation (2..4..3)
     if (state == SpideyState.skill1 &&
@@ -975,52 +1120,11 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
       final drawW = data.imgW * scale;
       final drawH = data.imgH * scale;
 
-      final currentDuration = _currentIdleIndex < idleFrameDurations.length
-          ? idleFrameDurations[_currentIdleIndex]
-          : 0.38;
-      final progress = (_idleTimer / currentDuration).clamp(0.0, 1.0);
-
-      // Smooth cosine cross-fade transition across the second half (progress >= 0.40) of the slower frames (1..8)
-      final nextIndex = (_currentIdleIndex + 1) % _idleSprites.length;
-      final shouldBlend = progress >= 0.40 &&
-          nextIndex < _idleSprites.length &&
-          nextIndex < _idleFrameData.length &&
-          _currentIdleIndex < 8;
-
-      if (shouldBlend) {
-        // Continuous smooth S-curve blend
-        final blendT = (progress - 0.40) / 0.60;
-        final blend = (1.0 - math.cos(blendT * math.pi)) / 2.0;
-
-        final nextData = _idleFrameData[nextIndex];
-        final nextSprite = _idleSprites[nextIndex];
-        final nextScale = size.y / nextData.scaleRefH;
-        final nextDrawX = -nextData.centerX * nextScale;
-        final nextDrawY = -nextData.feetY * nextScale;
-        final nextDrawW = nextData.imgW * nextScale;
-        final nextDrawH = nextData.imgH * nextScale;
-
-        _blendPaintA.color = Colors.white.withValues(alpha: (1.0 - blend).clamp(0.0, 1.0));
-        _blendPaintB.color = Colors.white.withValues(alpha: blend.clamp(0.0, 1.0));
-        sprite.render(
-          canvas,
-          position: Vector2(drawX, drawY),
-          size: Vector2(drawW, drawH),
-          overridePaint: _blendPaintA,
-        );
-        nextSprite.render(
-          canvas,
-          position: Vector2(nextDrawX, nextDrawY),
-          size: Vector2(nextDrawW, nextDrawH),
-          overridePaint: _blendPaintB,
-        );
-      } else {
-        sprite.render(
-          canvas,
-          position: Vector2(drawX, drawY),
-          size: Vector2(drawW, drawH),
-        );
-      }
+      sprite.render(
+        canvas,
+        position: Vector2(drawX, drawY),
+        size: Vector2(drawW, drawH),
+      );
     } else if (state == SpideyState.running &&
         isGrounded &&
         _walkSprites.isNotEmpty &&

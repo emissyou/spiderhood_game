@@ -27,7 +27,9 @@ class DamageNumber extends PositionComponent {
     position.y -= dt * 30.0; // Floats upward gently
 
     if (_elapsed >= maxDuration) {
-      removeFromParent();
+      Future.microtask(() {
+        if (isMounted) removeFromParent();
+      });
     }
   }
 

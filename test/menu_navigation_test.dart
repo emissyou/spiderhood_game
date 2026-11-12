@@ -3,13 +3,15 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:spideyhood/game/config/game_config.dart';
+import 'package:spideyhood/game/services/story_progress_service.dart';
 import 'package:spideyhood/game/ui/loading_screen.dart';
 import 'package:spideyhood/game/ui/mode_select_screen.dart';
 import 'package:spideyhood/game/ui/pixel_widgets.dart';
 import 'package:spideyhood/game/ui/survival_level_screen.dart';
 
 void main() {
-  setUp(() {
+  setUp(() async {
+    await StoryProgressService.instance.resetStory();
     final Uint8List mockPng = base64Decode(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
     );

@@ -65,6 +65,7 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
   final List<Sprite> _kickSprites = [];
   Sprite? _hurtSprite;
   Sprite? _defeatedSprite;
+  Sprite? _webOverlaySprite;
 
   static const List<_MinionFrameData> _idleData = [
     _MinionFrameData(imgW: 77, imgH: 138, centerX: 33.0, feetY: 136.0, scaleRefH: 126.0),
@@ -104,18 +105,7 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
     ..color = const Color(0xFF334155)
     ..style = PaintingStyle.stroke
     ..strokeWidth = 1.0;
-  static final Paint _hpGreen = Paint()..color = const Color(0xFF10B981);
-  static final Paint _hpYellow = Paint()..color = const Color(0xFFF59E0B);
   static final Paint _hpRed = Paint()..color = const Color(0xFFEF4444);
-
-  // Cached web tangle overlay paints
-  static final Paint _webStrandPaint = Paint()
-    ..color = Colors.white.withValues(alpha: 0.92)
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = 1.3;
-  static final Paint _webNodePaint = Paint()
-    ..color = Colors.white
-    ..style = PaintingStyle.fill;
 
   // Fallback vector paints
   static final Paint _armorPaint = Paint()..color = const Color(0xFF0F292F);
@@ -185,6 +175,11 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
     // 6. Defeated frame
     try {
       _defeatedSprite = await Sprite.load('story/enemy/minion/defeated/1.png');
+    } catch (_) {}
+
+    // 7. Sticky web overlay asset
+    try {
+      _webOverlaySprite = await Sprite.load('player/web_swing/4.png');
     } catch (_) {}
   }
 
@@ -307,20 +302,22 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
         if (dx.abs() < 260.0 && dy.abs() < 180.0 && !warehouse.isEntranceCutscene) {
           warehouse.engagePlayer();
         }
-      } else if (dx.abs() < 500.0 && dy.abs() < 260.0 && !warehouse.isEntranceCutscene) {
+      } else if (!warehouse.isEntranceCutscene &&
+          (warehouse.hasPlayerEngaged || warehouse.boss.hasTriggeredEscape || dx.abs() < 600.0)) {
         chasingPlayer = true;
         patrolDirection = dx >= 0 ? 1.0 : -1.0;
 
-        // If in close attack range (< 36px horizontally and < 24px vertically): Attack!
-        if (dx.abs() < 36.0 && dy.abs() < 24.0) {
+        // If in close attack range (< 44px horizontally and < 28px vertically): Attack!
+        if (dx.abs() < 44.0 && dy.abs() < 28.0) {
           velocity.x = 0;
           if (_attackCooldown <= 0) {
             state = _random.nextBool() ? MinionState.punching : MinionState.kicking;
             _attackTimer = 0.32;
-            _attackCooldown = 1.4;
+            _attackCooldown = 1.1;
             _animTimer = 0.0;
             _animIndex = 0;
             AudioManager.instance.playPunch();
+            player.takeDamage(1); // Solid hit on player (takes damage even when standing still!)
             return;
           }
         } else {
@@ -331,6 +328,7 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
           if (isGrounded && _jumpCooldown <= 0 && _webSlowTimer <= 0) {
             // 1. GAP JUMP BETWEEN PLATFORMS:
             // Left platform ends at x=360 (y=320), Center bridge starts at x=620 (y=364)
+            // Center bridge + right walkway are now joined (x=620..2010 at y=364) — no gap needed there
             final isNearLeftEdge = (position.x >= 310.0 && position.x <= 365.0 && patrolDirection > 0);
             final isNearCenterEdge = (position.x >= 615.0 && position.x <= 670.0 && patrolDirection < 0);
             final playerAcrossGap = (position.y < 420.0 && player.position.y < 420.0 &&
@@ -452,9 +450,10 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
   void render(Canvas canvas) {
     super.render(canvas);
 
+    canvas.save();
+
     // Flip horizontally when moving or facing left
     if (patrolDirection < 0) {
-      canvas.save();
       canvas.scale(-1, 1);
     }
 
@@ -565,32 +564,18 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
       );
     }
 
-    // Render sticky web entangled across minion's body while slowed
+    // Render sticky web asset entangled across minion's body while slowed
     if (_webSlowTimer > 0) {
-      final w = size.x;
-      final h = size.y;
-
-      final webPath = Path()
-        ..moveTo(-w * 0.48, -h * 0.78)
-        ..lineTo(w * 0.48, -h * 0.32)
-        ..moveTo(w * 0.48, -h * 0.78)
-        ..lineTo(-w * 0.48, -h * 0.32)
-        ..moveTo(-w * 0.42, -h * 0.56)
-        ..lineTo(w * 0.42, -h * 0.56)
-        ..moveTo(0, -h * 0.86)
-        ..lineTo(0, -h * 0.16)
-        ..moveTo(-w * 0.30, -h * 0.22)
-        ..lineTo(w * 0.30, -h * 0.70);
-
-      canvas.drawPath(webPath, _webStrandPaint);
-      canvas.drawCircle(Offset(0, -h * 0.56), 2.0, _webNodePaint);
-      canvas.drawCircle(Offset(-w * 0.22, -h * 0.44), 1.6, _webNodePaint);
-      canvas.drawCircle(Offset(w * 0.22, -h * 0.68), 1.6, _webNodePaint);
+      if (_webOverlaySprite != null) {
+        _webOverlaySprite!.render(
+          canvas,
+          position: Vector2(-15, -size.y * 0.70),
+          size: Vector2(30, 24),
+        );
+      }
     }
 
-    if (patrolDirection < 0) {
-      canvas.restore();
-    }
+    canvas.restore();
 
     // Clean, crisp Health Bar above the enemy's head
     if (!isDefeated) {
@@ -616,9 +601,7 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
 
       // Health fill bar
       if (hpPct > 0) {
-        final fillPaint = hpPct > 0.5
-            ? _hpGreen
-            : (hpPct > 0.25 ? _hpYellow : _hpRed);
+        final fillPaint = _hpRed;
         final fillRect = Rect.fromLTWH(
           -barW * 0.5 + 1.0,
           barY - (barH * 0.5) + 1.0,

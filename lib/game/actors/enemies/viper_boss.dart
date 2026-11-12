@@ -24,9 +24,24 @@ enum BossState {
 
 enum BossAnimPose { idle, running, punching, kicking, skill, hurt, defeated }
 
+class _BossFrameData {
+  final double imgW;
+  final double imgH;
+  final double centerX;
+  final double feetY;
+  final double scaleRefH;
+  const _BossFrameData({
+    required this.imgW,
+    required this.imgH,
+    required this.centerX,
+    required this.feetY,
+    required this.scaleRefH,
+  });
+}
+
 /// Syndicate Warlord / Boss stationed at the Abandoned Warehouse.
 class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameReference {
-  static const int maxHp = 450;
+  static const int maxHp = 700;
   int health = maxHp;
   int get maxHealth => maxHp;
   bool get isInvulnerable => bossState == BossState.waitingRightInvulnerable;
@@ -50,7 +65,7 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
   double _hitCooldownTimer = 0.0;
   double _hurtTimer = 0.0;
   double _attackTimer = 0.0;
-  double _attackCooldown = 1.3;
+  double _attackCooldown = 0.95;
   double _jumpCooldown = 0.0;
   double _skillCooldown = 0.0;
   double _webSlowTimer = 0.0;
@@ -62,6 +77,10 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
   bool hasTriggeredEscape = false;
   double _enrageSkillCastTimer = 0.0;
 
+  /// True while the escape-wave minions have been summoned but not yet mounted in the world tree.
+  /// Prevents the escape scenario from triggering for 1 frame before the new minions are visible.
+  bool escapeMinionsPending = false;
+
   final math.Random _random = math.Random();
 
   // Sprites
@@ -72,6 +91,44 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
   final List<Sprite> _skillSprites = [];
   Sprite? _hurtSprite;
   Sprite? _defeatedSprite;
+  Sprite? _webOverlaySprite;
+
+  static const List<_BossFrameData> _idleData = [
+    _BossFrameData(imgW: 157, imgH: 279, centerX: 76.5, feetY: 269.0, scaleRefH: 279.0),
+    _BossFrameData(imgW: 157, imgH: 279, centerX: 76.5, feetY: 271.0, scaleRefH: 279.0),
+    _BossFrameData(imgW: 160, imgH: 285, centerX: 73.5, feetY: 273.0, scaleRefH: 279.0),
+    _BossFrameData(imgW: 157, imgH: 279, centerX: 73.5, feetY: 271.0, scaleRefH: 279.0),
+    _BossFrameData(imgW: 159, imgH: 283, centerX: 78.5, feetY: 276.0, scaleRefH: 279.0),
+  ];
+
+  static const List<_BossFrameData> _runData = [
+    _BossFrameData(imgW: 233, imgH: 291, centerX: 118.0, feetY: 262.0, scaleRefH: 279.0),
+    _BossFrameData(imgW: 212, imgH: 266, centerX: 105.5, feetY: 258.0, scaleRefH: 279.0),
+    _BossFrameData(imgW: 212, imgH: 266, centerX: 106.5, feetY: 265.0, scaleRefH: 279.0),
+    _BossFrameData(imgW: 192, imgH: 241, centerX: 95.5, feetY: 240.0, scaleRefH: 279.0),
+  ];
+
+  static const List<_BossFrameData> _punchData = [
+    _BossFrameData(imgW: 191, imgH: 239, centerX: 95.0, feetY: 238.0, scaleRefH: 279.0),
+    _BossFrameData(imgW: 223, imgH: 278, centerX: 111.0, feetY: 276.0, scaleRefH: 279.0),
+    _BossFrameData(imgW: 247, imgH: 309, centerX: 123.0, feetY: 308.0, scaleRefH: 279.0),
+  ];
+
+  static const List<_BossFrameData> _kickData = [
+    _BossFrameData(imgW: 263, imgH: 329, centerX: 130.5, feetY: 328.0, scaleRefH: 279.0),
+    _BossFrameData(imgW: 249, imgH: 311, centerX: 128.5, feetY: 300.0, scaleRefH: 279.0),
+  ];
+
+  static const List<_BossFrameData> _skillData = [
+    _BossFrameData(imgW: 176, imgH: 313, centerX: 95.0, feetY: 312.0, scaleRefH: 279.0),
+    _BossFrameData(imgW: 236, imgH: 295, centerX: 117.5, feetY: 293.0, scaleRefH: 279.0),
+  ];
+
+  static const _BossFrameData _hurtData =
+      _BossFrameData(imgW: 204, imgH: 255, centerX: 104.0, feetY: 254.0, scaleRefH: 279.0);
+
+  static const _BossFrameData _defeatedData =
+      _BossFrameData(imgW: 294, imgH: 235, centerX: 146.5, feetY: 203.0, scaleRefH: 279.0);
 
   static const double scaleRefH = 279.0;
 
@@ -81,8 +138,6 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
     ..color = const Color(0xFFE2E8F0)
     ..style = PaintingStyle.stroke
     ..strokeWidth = 1.2;
-  static final Paint _hpGreen = Paint()..color = const Color(0xFF10B981);
-  static final Paint _hpYellow = Paint()..color = const Color(0xFFF59E0B);
   static final Paint _hpRed = Paint()..color = const Color(0xFFEF4444);
   static final Paint _hpEnrage = Paint()..color = const Color(0xFFDC2626);
 
@@ -176,6 +231,11 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
     try {
       _defeatedSprite = await Sprite.load('story/enemy/boss/defeated/1.png');
     } catch (_) {}
+
+    // 8. Sticky web overlay asset
+    try {
+      _webOverlaySprite = await Sprite.load('player/web_swing/4.png');
+    } catch (_) {}
   }
 
   /// Called when Spider-Man makes his first movement/action after the cutscene.
@@ -210,10 +270,10 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
 
     _hitCooldownTimer = 0.20;
 
-    // Phase 2 Enrage Defense: 60% damage reduction when health is half or below!
-    int actualDamage = amount;
+    // Tough boss armor: 25% passive reduction in Phase 1, 65% reduction when Enraged (HP <= 50%)!
+    int actualDamage = (amount * 0.75).round();
     if (hasTriggeredEnrage) {
-      actualDamage = math.max(1, (amount * 0.40).round());
+      actualDamage = math.max(1, (amount * 0.35).round());
     }
 
     health -= actualDamage;
@@ -246,7 +306,10 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
       patrolDirection = 1.0;
       animPose = BossAnimPose.running;
       velocity.x = 240.0;
+      escapeMinionsPending = true;
       _summonMinions(5);
+      // Allow the minions to be mounted before escape can be triggered
+      Future.microtask(() { escapeMinionsPending = false; });
       return;
     }
 
@@ -273,11 +336,11 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
     AudioManager.instance.playJump();
 
     final spawnPositions = [
-      Vector2(450.0, groundLevel),
-      Vector2(750.0, 364.0),
-      Vector2(1100.0, 364.0),
-      Vector2(1400.0, groundLevel),
-      Vector2(1700.0, groundLevel),
+      Vector2(680.0, 365.0),
+      Vector2(880.0, 365.0),
+      Vector2(1100.0, 365.0),
+      Vector2(1450.0, groundLevel),
+      Vector2(1650.0, groundLevel),
     ];
 
     for (int i = 0; i < count; i++) {
@@ -319,12 +382,13 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
       return;
     }
 
-    // 2. Boss moves to far right when Spider-Man moves, dropping cleanly to the floor
+    // 2. Boss moves to far right when Spider-Man moves, dropping to the floor in the right terminal sector
     if (bossState == BossState.movingToRight) {
       animPose = BossAnimPose.running;
       patrolDirection = 1.0;
-      velocity.x = runSpeed * 1.5;
-      if (position.x > 1380.0 && position.y < groundLevel) {
+      velocity.x = 210.0;
+      // When boss passes bridge end (x>1280) drop to floor since there is no elevated platform there
+      if (position.x > 1280.0) {
         currentPlatform = null;
         isGrounded = false;
       }
@@ -344,7 +408,7 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
     if (bossState == BossState.waitingRightInvulnerable) {
       animPose = BossAnimPose.idle;
       velocity.setZero();
-      position.y = groundLevel; // Firmly grounded on the floor
+      position.y = groundLevel; // Firmly grounded on the floor in the right terminal sector
       isGrounded = true;
       patrolDirection = -1.0; // Face left towards the arena
       _updateAnimation(dt, 0.25);
@@ -368,6 +432,7 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
       _enrageSkillCastTimer -= dt;
       velocity.setZero();
       animPose = BossAnimPose.skill;
+      _applyMovementAndPhysics(dt);
       _updateAnimation(dt, 0.14);
       if (_enrageSkillCastTimer <= 0) {
         animPose = BossAnimPose.running;
@@ -431,6 +496,7 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
                 ? (hasTriggeredEnrage ? 36 : 18)
                 : (hasTriggeredEnrage ? 54 : 28);
             player.takeDamage(dmg);
+            _applyMovementAndPhysics(dt);
             return;
           }
         } else {
@@ -543,7 +609,7 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
     if (other is WarehousePlatform) {
       final platTop = other.position.y;
       final bossBottom = position.y;
-      if (velocity.y >= 0 && bossBottom >= platTop - 6.0 && bossBottom <= platTop + 20.0) {
+      if (velocity.y >= 0 && bossBottom >= platTop - 12.0 && bossBottom <= platTop + 24.0) {
         position.y = platTop;
         velocity.y = 0;
         isGrounded = true;
@@ -569,6 +635,10 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
   void render(Canvas canvas) {
     super.render(canvas);
 
+    canvas.save();
+    // Offset slightly downwards (+13.0px) so boss boots align firmly with minion and player feet line
+    canvas.translate(0, 13.0);
+
     // 1. Invulnerable Shield Barrier Graphic when waiting at the right side
     if (bossState == BossState.waitingRightInvulnerable) {
       final shieldRect = Rect.fromCenter(
@@ -593,86 +663,75 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
 
     // Flip horizontally when facing left
     if (patrolDirection < 0) {
-      canvas.save();
       canvas.scale(-1, 1);
     }
 
     bool spriteRendered = false;
-    final scale = size.y / scaleRefH;
 
     if (animPose == BossAnimPose.defeated && _defeatedSprite != null) {
+      final scale = size.y / _defeatedData.scaleRefH;
       _defeatedSprite!.render(
         canvas,
-        position: Vector2(-147.0 * scale, -234.0 * scale),
-        size: Vector2(294.0 * scale, 235.0 * scale),
+        position: Vector2(-_defeatedData.centerX * scale, -_defeatedData.feetY * scale),
+        size: Vector2(_defeatedData.imgW * scale, _defeatedData.imgH * scale),
       );
       spriteRendered = true;
     } else if (animPose == BossAnimPose.hurt && _hurtSprite != null) {
+      final scale = size.y / _hurtData.scaleRefH;
       _hurtSprite!.render(
         canvas,
-        position: Vector2(-102.0 * scale, -254.0 * scale),
-        size: Vector2(204.0 * scale, 255.0 * scale),
+        position: Vector2(-_hurtData.centerX * scale, -_hurtData.feetY * scale),
+        size: Vector2(_hurtData.imgW * scale, _hurtData.imgH * scale),
       );
       spriteRendered = true;
     } else if (animPose == BossAnimPose.skill && _skillSprites.isNotEmpty) {
       final idx = _animIndex % _skillSprites.length;
-      final sprite = _skillSprites[idx];
-      final w = idx == 0 ? 176.0 : 236.0;
-      final h = idx == 0 ? 313.0 : 295.0;
-      sprite.render(
+      final data = idx < _skillData.length ? _skillData[idx] : _skillData[0];
+      final scale = size.y / data.scaleRefH;
+      _skillSprites[idx].render(
         canvas,
-        position: Vector2(-w * 0.5 * scale, -h * scale),
-        size: Vector2(w * scale, h * scale),
+        position: Vector2(-data.centerX * scale, -data.feetY * scale),
+        size: Vector2(data.imgW * scale, data.imgH * scale),
       );
       spriteRendered = true;
     } else if (animPose == BossAnimPose.punching && _punchSprites.isNotEmpty) {
       final idx = _animIndex % _punchSprites.length;
-      final sprite = _punchSprites[idx];
-      const widths = [191.0, 223.0, 247.0];
-      const heights = [239.0, 278.0, 309.0];
-      final w = widths[idx % widths.length];
-      final h = heights[idx % heights.length];
-      sprite.render(
+      final data = idx < _punchData.length ? _punchData[idx] : _punchData[0];
+      final scale = size.y / data.scaleRefH;
+      _punchSprites[idx].render(
         canvas,
-        position: Vector2(-w * 0.45 * scale, -h * scale),
-        size: Vector2(w * scale, h * scale),
+        position: Vector2(-data.centerX * scale, -data.feetY * scale),
+        size: Vector2(data.imgW * scale, data.imgH * scale),
       );
       spriteRendered = true;
     } else if (animPose == BossAnimPose.kicking && _kickSprites.isNotEmpty) {
       final idx = _animIndex % _kickSprites.length;
-      final sprite = _kickSprites[idx];
-      final w = idx == 0 ? 263.0 : 249.0;
-      final h = idx == 0 ? 329.0 : 311.0;
-      sprite.render(
+      final data = idx < _kickData.length ? _kickData[idx] : _kickData[0];
+      final scale = size.y / data.scaleRefH;
+      _kickSprites[idx].render(
         canvas,
-        position: Vector2(-w * 0.5 * scale, -h * scale),
-        size: Vector2(w * scale, h * scale),
+        position: Vector2(-data.centerX * scale, -data.feetY * scale),
+        size: Vector2(data.imgW * scale, data.imgH * scale),
       );
       spriteRendered = true;
     } else if (animPose == BossAnimPose.running && _runSprites.isNotEmpty) {
       final idx = _animIndex % _runSprites.length;
-      final sprite = _runSprites[idx];
-      const widths = [233.0, 212.0, 212.0, 192.0];
-      const heights = [291.0, 266.0, 266.0, 241.0];
-      final w = widths[idx % widths.length];
-      final h = heights[idx % heights.length];
-      sprite.render(
+      final data = idx < _runData.length ? _runData[idx] : _runData[0];
+      final scale = size.y / data.scaleRefH;
+      _runSprites[idx].render(
         canvas,
-        position: Vector2(-w * 0.48 * scale, -h * scale),
-        size: Vector2(w * scale, h * scale),
+        position: Vector2(-data.centerX * scale, -data.feetY * scale),
+        size: Vector2(data.imgW * scale, data.imgH * scale),
       );
       spriteRendered = true;
     } else if (_idleSprites.isNotEmpty) {
       final idx = _animIndex % _idleSprites.length;
-      final sprite = _idleSprites[idx];
-      const widths = [157.0, 157.0, 160.0, 157.0, 159.0];
-      const heights = [279.0, 279.0, 285.0, 279.0, 283.0];
-      final w = widths[idx % widths.length];
-      final h = heights[idx % heights.length];
-      sprite.render(
+      final data = idx < _idleData.length ? _idleData[idx] : _idleData[0];
+      final scale = size.y / data.scaleRefH;
+      _idleSprites[idx].render(
         canvas,
-        position: Vector2(-w * 0.5 * scale, -h * scale),
-        size: Vector2(w * scale, h * scale),
+        position: Vector2(-data.centerX * scale, -data.feetY * scale),
+        size: Vector2(data.imgW * scale, data.imgH * scale),
       );
       spriteRendered = true;
     }
@@ -687,15 +746,22 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
       canvas.drawRect(Rect.fromLTWH(w * 0.05, -h * 0.92, w * 0.25, 4), _bossVisorPaint);
     }
 
-    if (patrolDirection < 0) {
-      canvas.restore();
+    // Render sticky web asset entangled across boss body while slowed
+    if (_webSlowTimer > 0 && _webOverlaySprite != null) {
+      _webOverlaySprite!.render(
+        canvas,
+        position: Vector2(-22, -size.y * 0.65),
+        size: Vector2(44, 34),
+      );
     }
+
+    canvas.restore();
 
     // Overhead Boss Health Bar
     if (bossState != BossState.escaped) {
       const barW = 52.0;
       const barH = 5.0;
-      final barY = -size.y - 12.0;
+      final barY = -size.y - 6.0;
       final hpPct = (health / maxHp).clamp(0.0, 1.0);
 
       // Dark background container
@@ -709,9 +775,7 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
 
       // Fill bar
       if (hpPct > 0) {
-        final fillPaint = hasTriggeredEnrage
-            ? _hpEnrage
-            : (hpPct > 0.5 ? _hpGreen : (hpPct > 0.25 ? _hpYellow : _hpRed));
+        final fillPaint = hasTriggeredEnrage ? _hpEnrage : _hpRed;
         final fillRect = Rect.fromLTWH(
           -barW * 0.5 + 1.0,
           barY - (barH * 0.5) + 1.0,

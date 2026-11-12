@@ -3,8 +3,10 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
 import 'package:spideyhood/game/services/audio_manager.dart';
+import 'package:spideyhood/game/services/story_progress_service.dart';
 import 'package:spideyhood/game/story/warehouse_game.dart';
 import 'package:spideyhood/game/ui/mode_select_screen.dart';
+import 'package:spideyhood/game/ui/moonlit_loading_screen.dart';
 import 'package:spideyhood/game/ui/pixel_widgets.dart';
 import 'package:spideyhood/game/ui/story_quest_hud.dart';
 
@@ -419,7 +421,109 @@ class StoryEscapeScreen extends StatelessWidget {
       captions: escapeCaptions,
       onComplete: () {
         Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (context, anim1, anim2) => const StoryBlackoutScreen(
+              nextScreen: StoryAfterEscapeScreen(),
+              duration: Duration(milliseconds: 1000),
+            ),
+            transitionsBuilder: (context, anim1, anim2, child) {
+              return FadeTransition(opacity: anim1, child: child);
+            },
+            transitionDuration: const Duration(milliseconds: 400),
+          ),
+        );
+      },
+      onBackToMenu: () {
+        Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const ModeSelectScreen()),
+        );
+      },
+    );
+  }
+}
+
+/// Seamless blackout transition screen displayed between story segments.
+class StoryBlackoutScreen extends StatefulWidget {
+  final Widget nextScreen;
+  final Duration duration;
+
+  const StoryBlackoutScreen({
+    super.key,
+    required this.nextScreen,
+    this.duration = const Duration(milliseconds: 1000),
+  });
+
+  @override
+  State<StoryBlackoutScreen> createState() => _StoryBlackoutScreenState();
+}
+
+class _StoryBlackoutScreenState extends State<StoryBlackoutScreen> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(widget.duration, () {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (context, anim1, anim2) => widget.nextScreen,
+            transitionsBuilder: (context, anim1, anim2, child) {
+              return FadeTransition(opacity: anim1, child: child);
+            },
+            transitionDuration: const Duration(milliseconds: 400),
+          ),
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Colors.black,
+      body: SizedBox.expand(),
+    );
+  }
+}
+
+/// Cinematic After-Escape Scenario (Second Story) triggered after the Escape Scenario.
+class StoryAfterEscapeScreen extends StatelessWidget {
+  const StoryAfterEscapeScreen({super.key});
+
+  static const List<String> afterEscapeImages = [
+    'assets/images/story/part_1/after_escape_scenario/1.png',
+    'assets/images/story/part_1/after_escape_scenario/2.png',
+  ];
+
+  static const List<String> afterEscapeCaptions = [
+    'SCENE 1: SPIDER-MAN PERCHES ABOVE THE CITY SKYLINE, SCANNING THE NIGHT FOR TRACES OF THE ESCAPED WARLORD.',
+    'SCENE 2: AN ENCRYPTED VIPER SIGNAL IS DETECTED ACROSS THE BAY: THE HUNT CONTINUES!',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return StoryViewerScreen(
+      modeBadgeText: 'STORY MODE: PART 1 • AFTER ESCAPE SCENARIO',
+      images: afterEscapeImages,
+      captions: afterEscapeCaptions,
+      onComplete: () {
+        // Save progress to Part 2 checkpoint
+        StoryProgressService.instance.completePart1();
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (context, anim1, anim2) => const MoonlitLoadingScreen(),
+            transitionsBuilder: (context, anim1, anim2, child) {
+              return FadeTransition(opacity: anim1, child: child);
+            },
+            transitionDuration: const Duration(milliseconds: 500),
+          ),
         );
       },
       onBackToMenu: () {
@@ -446,6 +550,21 @@ class _WarehouseGameScreenState extends State<WarehouseGameScreen> {
   void initState() {
     super.initState();
     _game = WarehouseGame();
+    _game.onRestartPart = () {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const WarehouseGameScreen()),
+        );
+      }
+    };
+    _game.onRestartStory = () async {
+      await StoryProgressService.instance.resetStory();
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const StoryIntroScreen()),
+        );
+      }
+    };
     _game.onExitToMenu = () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
@@ -464,11 +583,14 @@ class _WarehouseGameScreenState extends State<WarehouseGameScreen> {
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            pageBuilder: (context, anim1, anim2) => const StoryEscapeScreen(),
+            pageBuilder: (context, anim1, anim2) => const StoryBlackoutScreen(
+              nextScreen: StoryEscapeScreen(),
+              duration: Duration(milliseconds: 1000),
+            ),
             transitionsBuilder: (context, anim1, anim2, child) {
               return FadeTransition(opacity: anim1, child: child);
             },
-            transitionDuration: const Duration(milliseconds: 600),
+            transitionDuration: const Duration(milliseconds: 400),
           ),
         );
       }

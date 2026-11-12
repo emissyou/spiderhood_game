@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:spideyhood/game/actors/enemies/viper_boss.dart';
 import 'package:spideyhood/game/actors/enemies/viper_guard.dart';
 import 'package:spideyhood/game/actors/player/spidey.dart';
+import 'package:spideyhood/game/components/pickup_drop.dart';
 import 'package:spideyhood/game/components/web_anchor_point.dart';
 import 'package:spideyhood/game/config/game_config.dart';
 import 'package:spideyhood/game/services/audio_manager.dart';
@@ -23,9 +24,16 @@ class WarehouseGame extends FlameGame
   final List<WebAnchorPoint> anchors = [];
 
   VoidCallback? onExitToMenu;
+  VoidCallback? onRestartPart;
+  VoidCallback? onRestartStory;
   VoidCallback? onMissionComplete;
   VoidCallback? onTriggerEscapeScenario;
   bool hasTriggeredEscapeScenario = false;
+
+  // Random Platform Supply Drops (Limited to max 3 active in arena)
+  static const int maxActiveDrops = 3;
+  double _dropSpawnTimer = 0.0;
+  final math.Random _dropRandom = math.Random();
 
   // Quest 1 Objectives Tracker
   int defeatedGuards = 0;
@@ -83,10 +91,11 @@ class WarehouseGame extends FlameGame
     world.add(WarehouseBackground());
 
     // 2. Elevated Industrial Catwalks (Completely invisible collision hitboxes matching background art)
-    // Left platform moved up to y=320; Center platform moved down to y=364 to match wooden deck
+    // Left platform at y=320 (x=10..370, width=360); Center catwalk bridge at y=365 (x=610..1290, width=680)
+    // Right terminal area (x>1290) is floor level only — no raised platform there
     final platforms = [
-      WarehousePlatform(position: Vector2(40, 320), size: Vector2(320, 20)),
-      WarehousePlatform(position: Vector2(620, 364), size: Vector2(780, 20)),
+      WarehousePlatform(position: Vector2(10, 320), size: Vector2(360, 20)),
+      WarehousePlatform(position: Vector2(610, 365), size: Vector2(680, 20)),
     ];
     for (final p in platforms) {
       world.add(p);
@@ -104,11 +113,11 @@ class WarehouseGame extends FlameGame
       world.add(anchor);
     }
 
-    // 4. Stolen Military Tech Cores (Collectibles)
+    // 4. Stolen Compound-V Vials (Collectibles)
     final corePositions = [
-      Vector2(200, 295),   // On Left Catwalk Platform (y = 320)
-      Vector2(1000, 339),  // On Central Assembly Bridge (y = 364)
-      Vector2(1750, 470),  // In Deep Sector Terminal area (floor y = 496)
+      Vector2(180, 320),   // On Left Catwalk Platform (y = 320)
+      Vector2(900, 365),   // On Central Assembly Bridge (y = 365)
+      Vector2(1750, 496),  // In Deep Sector Terminal area (floor y = 496)
     ];
     for (int i = 0; i < corePositions.length; i++) {
       world.add(
@@ -123,9 +132,13 @@ class WarehouseGame extends FlameGame
       );
     }
 
-    // 5. Boss: Viper Warlord meeting his minions on the center catwalk bridge (y = 364)
+    // Initial tactical platform supply drops (floating on platforms, limited to max 3)
+    world.add(PickupDrop(position: Vector2(220, 320), type: DropType.webFluid, groundLevel: 320.0, startGrounded: true));
+    world.add(PickupDrop(position: Vector2(780, 365), type: DropType.heal, groundLevel: 365.0, startGrounded: true));
+
+    // 5. Boss: Viper Warlord meeting his minions on the center catwalk bridge (y = 365)
     boss = ViperBoss(
-      position: Vector2(1050.0, 364.0),
+      position: Vector2(1080.0, 365.0),
       size: Vector2(38, 68),
       groundLevel: warehouseFloorY,
     );
@@ -134,10 +147,10 @@ class WarehouseGame extends FlameGame
 
     // Initial syndicate guards gathered in a military lineup facing the boss on the center bridge
     final guardConfigs = [
-      (x: 840.0, y: 364.0, range: 80.0, ground: warehouseFloorY, dir: 1.0),
-      (x: 910.0, y: 364.0, range: 80.0, ground: warehouseFloorY, dir: 1.0),
-      (x: 980.0, y: 364.0, range: 80.0, ground: warehouseFloorY, dir: 1.0),
-      (x: 1140.0, y: 364.0, range: 80.0, ground: warehouseFloorY, dir: -1.0),
+      (x: 680.0, y: 365.0, range: 40.0, ground: warehouseFloorY, dir: 1.0),
+      (x: 760.0, y: 365.0, range: 40.0, ground: warehouseFloorY, dir: 1.0),
+      (x: 840.0, y: 365.0, range: 40.0, ground: warehouseFloorY, dir: 1.0),
+      (x: 920.0, y: 365.0, range: 40.0, ground: warehouseFloorY, dir: 1.0),
     ];
     for (final cfg in guardConfigs) {
       final guard = ViperGuard(
@@ -159,9 +172,9 @@ class WarehouseGame extends FlameGame
     }
 
     // 6. Spawn Spidey swinging in from the entrance rafter
-    final entranceAnchor = Vector2(160.0, 110.0);
+    final entranceAnchor = Vector2(280.0, 45.0);
     player = Spidey(
-      position: Vector2(40.0, 250.0),
+      position: Vector2(60.0, 130.0),
       size: Vector2(28, 50),
       groundLevel: warehouseFloorY,
       worldWidth: warehouseWorldWidth,
@@ -169,11 +182,12 @@ class WarehouseGame extends FlameGame
     world.add(player);
 
     // Initialize Spider-Man in an entrance swing swooping down towards the floor
+    player.ignorePlatformLanding = true;
     player.webAnchor = entranceAnchor;
     player.webLength = (player.position - entranceAnchor).length;
     final offset = (player.position - Vector2(0, player.size.y / 2)) - entranceAnchor;
     player.swingAngle = math.atan2(offset.x, offset.y);
-    player.angularVelocity = 3.2;
+    player.angularVelocity = 2.4;
     player.state = SpideyState.swinging;
     player.isGrounded = false;
     player.isFacingRight = true;
@@ -223,10 +237,39 @@ class WarehouseGame extends FlameGame
     if (isMissionComplete) return;
 
     final bossDone = (boss.bossState == BossState.escaped || !boss.isMounted);
-    if (defeatedGuards >= targetGuards && collectedCores >= targetCores && terminalReached && bossDone) {
+    if (defeatedGuards >= targetGuards && collectedCores >= targetCores && terminalReached && bossDone && hasTriggeredEscapeScenario) {
       isMissionComplete = true;
       onMissionComplete?.call();
     }
+  }
+
+  /// Spawn random tactical platform supply drops (limited to max 3 active)
+  void _spawnRandomPlatformDrop() {
+    final activeCount = world.children.whereType<PickupDrop>().length;
+    if (activeCount >= maxActiveDrops) return;
+
+    final choice = _dropRandom.nextInt(3);
+    final (x, y) = switch (choice) {
+      0 => (30.0 + _dropRandom.nextDouble() * 300.0, 320.0),              // Left platform (10..370, y=320)
+      1 => (630.0 + _dropRandom.nextDouble() * 630.0, 365.0),             // Center bridge (610..1290, y=365)
+      _ => (250.0 + _dropRandom.nextDouble() * 1500.0, warehouseFloorY),  // Floor
+    };
+
+    final typeChoice = _dropRandom.nextInt(3);
+    final dropType = switch (typeChoice) {
+      0 => DropType.heal,
+      1 => DropType.webFluid,
+      _ => DropType.shield,
+    };
+
+    world.add(
+      PickupDrop(
+        position: Vector2(x, y),
+        type: dropType,
+        groundLevel: y,
+        startGrounded: true,
+      ),
+    );
   }
 
   @override
@@ -256,24 +299,26 @@ class WarehouseGame extends FlameGame
 
       if (cutscenePhase == 0) {
         if (player.state == SpideyState.swinging) {
-          if (player.swingAngle >= 0.16 || player.position.y >= warehouseFloorY - 70.0) {
+          // Allow Spidey to swing gracefully across the rafter for at least 1.4s
+          if (_entranceTimer >= 1.4 && (player.swingAngle >= 0.20 || _entranceTimer >= 1.8)) {
             player.releaseWeb(withBoost: false);
             player.velocity.x = 220.0;
             player.velocity.y = 60.0;
           }
         } else {
-          if (player.isGrounded || player.position.y >= warehouseFloorY - 2.0) {
+          if (player.position.y >= warehouseFloorY - 4.0 || player.isGrounded) {
             player.position.y = warehouseFloorY;
             player.velocity.setZero();
             player.state = SpideyState.idle;
             player.isGrounded = true;
+            player.ignorePlatformLanding = false;
             cutscenePhase = 1;
             _cutsceneTimer = 0.0;
             AudioManager.instance.playJump();
           }
         }
 
-        if (_entranceTimer > 2.8 && cutscenePhase == 0) {
+        if (_entranceTimer > 3.2 && cutscenePhase == 0) {
           if (player.state == SpideyState.swinging) {
             player.releaseWeb(withBoost: false);
           }
@@ -281,6 +326,7 @@ class WarehouseGame extends FlameGame
           player.velocity.setZero();
           player.state = SpideyState.idle;
           player.isGrounded = true;
+          player.ignorePlatformLanding = false;
           cutscenePhase = 1;
           _cutsceneTimer = 0.0;
         }
@@ -289,7 +335,7 @@ class WarehouseGame extends FlameGame
         if (_cutsceneTimer >= 2.0) {
           cutscenePhase = 2;
           _cutsceneTimer = 0.0;
-          cutsceneBanner = "VIPER WARLORD: 'Secure the military tech cores! Destroy anyone who interferes!'";
+          cutsceneBanner = "VIPER WARLORD: 'Secure the Compound-V! Destroy anyone who interferes!'";
         }
       } else if (cutscenePhase == 2) {
         _cutsceneTimer += dt;
@@ -319,15 +365,42 @@ class WarehouseGame extends FlameGame
       _checkQuestCompletion();
     }
 
-    // Ending scenario trigger: Boss is escaping or has escaped, and player follows to right side (>= 70% of map: 1433.6px)
-    if ((boss.hasTriggeredEscape || boss.bossState == BossState.escaping || boss.bossState == BossState.escaped) &&
-        !hasTriggeredEscapeScenario) {
-      final triggerThresholdX = warehouseWorldWidth * 0.70; // 1433.6 px
-      if (player.position.x >= triggerThresholdX) {
-        hasTriggeredEscapeScenario = true;
-        cutsceneBanner = "EXIT REACHED — PURSUING THE WARLORD!";
-        AudioManager.instance.playWebShoot();
-        onTriggerEscapeScenario?.call();
+    // Periodic random platform supply drop spawning (limit max 3)
+    _dropSpawnTimer += dt;
+    if (_dropSpawnTimer >= 11.0) {
+      _dropSpawnTimer = 0.0;
+      _spawnRandomPlatformDrop();
+    }
+
+    // Ending scenario trigger: Boss is escaping or has escaped, ALL minions defeated, and player follows to right side
+    final aliveMinions = world.children.whereType<ViperGuard>().where((g) => !g.isDefeated).length;
+    final isBossEscaping = (boss.hasTriggeredEscape || boss.bossState == BossState.escaping || boss.bossState == BossState.escaped);
+
+    // Clear pending flag once minions are physically present in world children
+    if (boss.escapeMinionsPending && aliveMinions >= 5) {
+      boss.escapeMinionsPending = false;
+    }
+    final escapeMinionsMounted = !boss.escapeMinionsPending;
+
+    if (isBossEscaping && !hasTriggeredEscapeScenario) {
+      if (!escapeMinionsMounted || aliveMinions > 0) {
+        // Show banner only once per count change
+        final bannerMsg = aliveMinions > 0
+            ? "DEFEAT ALL REMAINING SYNDICATE SENTRIES! ($aliveMinions remaining)"
+            : "DEFEAT ALL REMAINING SYNDICATE SENTRIES!";
+        if (cutsceneBanner == null || !cutsceneBanner!.startsWith("DEFEAT")) {
+          cutsceneBanner = bannerMsg;
+        } else if (aliveMinions > 0 && cutsceneBanner != bannerMsg) {
+          cutsceneBanner = bannerMsg;
+        }
+      } else {
+        final triggerThresholdX = warehouseWorldWidth * 0.60; // 1228.8 px
+        if (player.position.x >= triggerThresholdX) {
+          hasTriggeredEscapeScenario = true;
+          cutsceneBanner = "EXIT REACHED — PURSUING THE WARLORD!";
+          AudioManager.instance.playWebShoot();
+          onTriggerEscapeScenario?.call();
+        }
       }
     }
 
@@ -457,6 +530,13 @@ class WarehouseGame extends FlameGame
       return KeyEventResult.handled;
     }
 
+    if (event is KeyDownEvent &&
+        (event.logicalKey == LogicalKeyboardKey.arrowDown ||
+            event.logicalKey == LogicalKeyboardKey.keyS)) {
+      dropDownPlatform();
+      return KeyEventResult.handled;
+    }
+
     // Punch (18 Damage)
     if (event is KeyDownEvent &&
         (event.logicalKey == LogicalKeyboardKey.keyJ ||
@@ -575,9 +655,24 @@ class WarehouseGame extends FlameGame
 
   void pursueBossToExit() {
     engagePlayer();
+    final aliveMinions = world.children.whereType<ViperGuard>().where((g) => !g.isDefeated).length;
+    final isBossEscaping = (boss.hasTriggeredEscape || boss.bossState == BossState.escaping || boss.bossState == BossState.escaped);
+    if (!isBossEscaping) {
+      cutsceneBanner = "DEFEAT THE BOSS FIRST!";
+      return;
+    }
+    // Also block if boss's escape wave minions are still being mounted into the world
+    if (boss.escapeMinionsPending || aliveMinions > 0) {
+      final remaining = aliveMinions > 0 ? aliveMinions : '...';
+      cutsceneBanner = "DEFEAT ALL REMAINING SYNDICATE SENTRIES FIRST! ($remaining remaining)";
+      return;
+    }
     player.isFacingRight = true;
     player.velocity.x = 480.0;
+    hasTriggeredEscapeScenario = true;
+    cutsceneBanner = "EXIT REACHED — PURSUING THE WARLORD!";
     AudioManager.instance.playWebShoot();
+    onTriggerEscapeScenario?.call();
   }
 
   void punch() {
@@ -596,6 +691,12 @@ class WarehouseGame extends FlameGame
     if (isEntranceCutscene) return;
     engagePlayer();
     player.jump();
+  }
+
+  void dropDownPlatform() {
+    if (isEntranceCutscene) return;
+    engagePlayer();
+    player.dropDownPlatform();
   }
 
   void useSkill() {

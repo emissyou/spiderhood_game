@@ -10,7 +10,7 @@ class AudioManager {
 
   final math.Random _random = math.Random();
 
-  bool _isMuted = false;
+  bool isMuted = false;
   bool _isPlaying = false;
   bool _isStartingBgm = false;
   double _volume = 0.65;
@@ -61,7 +61,6 @@ class AudioManager {
     'sfx/button_click_3.wav',
   ];
 
-  bool get isMuted => _isMuted;
   bool get isPlaying => _isPlaying;
   double get volume => _volume;
 
@@ -81,7 +80,7 @@ class AudioManager {
   }) async {
     _volume = volume;
     _currentTrack = track;
-    if (_isMuted) return;
+    if (isMuted) return;
 
     // 1. Prevent duplicate simultaneous playback (Never overlap!)
     if (_isPlaying && !forceRestart) {
@@ -163,7 +162,7 @@ class AudioManager {
 
   /// Wakes up any browser-suspended audio context upon any user interaction.
   void resumeBgmIfSuspended() {
-    if (_isMuted) return;
+    if (isMuted) return;
     if (kIsWeb) {
       getWebAudio().resumeBgm();
       if (!_isPlaying) {
@@ -218,7 +217,7 @@ class AudioManager {
   }
 
   Future<void> resumeBgm() async {
-    if (_isMuted || _isPlaying) return;
+    if (isMuted || _isPlaying) return;
     if (kIsWeb) {
       getWebAudio().resumeBgm();
       _isPlaying = true;
@@ -251,7 +250,7 @@ class AudioManager {
 
   /// Plays a one-shot sound effect from assets/audio/
   Future<void> playSfx(String file, {double volume = 0.75}) async {
-    if (_isMuted) return;
+    if (isMuted) return;
     if (kIsWeb) {
       getWebAudio().playSfx(file, volume);
       return;
@@ -302,15 +301,15 @@ class AudioManager {
     final track = _pickVariation(buttonClickPool, _lastClickIndex, (i) => _lastClickIndex = i);
     playSfx(track, volume: 0.80);
     // User interacted! Ensure background music starts if unmuted and not actively playing
-    if (!_isMuted && !_isPlaying) {
+    if (!isMuted && !_isPlaying) {
       playBgm(track: _currentTrack, volume: _volume);
     }
   }
 
   /// Toggles mute on/off across the game.
   Future<void> toggleMute() async {
-    _isMuted = !_isMuted;
-    if (_isMuted) {
+    isMuted = !isMuted;
+    if (isMuted) {
       await stopBgm();
     } else {
       if (_currentTrack.isNotEmpty) {

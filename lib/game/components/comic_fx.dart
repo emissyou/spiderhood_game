@@ -33,7 +33,9 @@ class ComicFx extends PositionComponent {
     _elapsed += dt;
 
     if (_elapsed >= maxDuration) {
-      removeFromParent();
+      Future.microtask(() {
+        if (isMounted) removeFromParent();
+      });
       return;
     }
 

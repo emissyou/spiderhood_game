@@ -1,8 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:spideyhood/game/actors/enemies/viper_boss.dart';
+import 'package:spideyhood/game/actors/enemies/viper_guard.dart';
+import 'package:spideyhood/game/actors/player/spidey.dart';
 import 'package:spideyhood/game/services/audio_manager.dart';
+import 'package:spideyhood/game/services/story_progress_service.dart';
 import 'package:spideyhood/game/story/warehouse_game.dart';
+import 'package:spideyhood/game/ui/moonlit_rooftop_screen.dart';
 import 'package:spideyhood/game/ui/pixel_widgets.dart';
 
 /// Interactive HUD and touch controls for Story Quest 1: The Abandoned Warehouse.
@@ -17,6 +21,7 @@ class StoryQuestHud extends StatefulWidget {
 
 class _StoryQuestHudState extends State<StoryQuestHud> {
   Timer? _updateTimer;
+  bool _isMenuOpen = false;
 
   @override
   void initState() {
@@ -96,9 +101,7 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
                           alignment: Alignment.centerLeft,
                           widthFactor: (game.boss.health / ViperBoss.maxHp).clamp(0.0, 1.0),
                           child: Container(
-                            color: game.boss.hasTriggeredEnrage
-                                ? const Color(0xFFEF4444)
-                                : (game.boss.health > ViperBoss.maxHp * 0.5 ? const Color(0xFF10B981) : const Color(0xFFF59E0B)),
+                            color: const Color(0xFFEF4444),
                           ),
                         ),
                       ),
@@ -135,7 +138,7 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
               ),
             ),
 
-          // Top Left: Story Quest Objectives Tracker
+          // Top Left: Player Status (HP & Fluid) & Story Quest Objectives Tracker
           Positioned(
             top: 14,
             left: 16,
@@ -148,6 +151,24 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Row 1: Player HP & Web Fluid in 1 row (slightly bigger)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      _buildPlayerHealthRow(game.player),
+                      const SizedBox(width: 14),
+                      _buildPlayerWebFluidRow(game.player),
+                      if (game.player.shieldTimer > 0) ...[
+                        const SizedBox(width: 8),
+                        _buildPlayerShieldBadge(game.player),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(color: Colors.white24, height: 1),
+                  const SizedBox(height: 7),
+                  // Row 2: Location Header
                   const Row(
                     children: [
                       Icon(Icons.shield, color: Color(0xFF10B981), size: 16),
@@ -166,7 +187,7 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
                   ),
                   const SizedBox(height: 6),
                   _buildObjectiveRow(
-                    text: 'Recover Tech Cores: ${game.collectedCores}/${WarehouseGame.targetCores}',
+                    text: 'Recover Compound-V: ${game.collectedCores}/${WarehouseGame.targetCores}',
                     isDone: game.collectedCores >= WarehouseGame.targetCores,
                   ),
                   const SizedBox(height: 3),
@@ -224,11 +245,9 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
                 const SizedBox(width: 8),
                 InkWell(
                   onTap: () {
-                    if (game.onExitToMenu != null) {
-                      game.onExitToMenu!();
-                    } else {
-                      Navigator.of(context).maybePop();
-                    }
+                    setState(() {
+                      _isMenuOpen = !_isMenuOpen;
+                    });
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -246,7 +265,7 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
                         Icon(Icons.menu, color: Colors.white, size: 16),
                         SizedBox(width: 6),
                         Text(
-                          'MAP',
+                          'MENU',
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w900,
@@ -320,15 +339,17 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
                   const SizedBox(width: 8),
                   _buildActionButton(
                     label: 'SKILL',
-                    subtitle: 'WEB SHOT',
-                    color: const Color(0xFF7209B7),
-                    onTap: () => game.useSkill(),
+                    subtitle: game.player.skill1Cooldown > 0
+                        ? '${game.player.skill1Cooldown.toStringAsFixed(1)}s'
+                        : 'WEB SHOT',
+                    color: game.player.skill1Cooldown > 0 ? const Color(0xFF4A148C) : const Color(0xFF7209B7),
+                    onTap: game.player.skill1Cooldown > 0 ? null : () => game.useSkill(),
                   ),
                   const SizedBox(width: 8),
                   _buildActionButton(
                     label: 'SWING',
-                    subtitle: 'WEB',
-                    color: const Color(0xFF028090),
+                    subtitle: '${game.player.webFluid.clamp(0, 10).toInt()}/10 WEB',
+                    color: game.player.webFluid < 1.0 ? const Color(0xFF374151) : const Color(0xFF028090),
                     onTap: () => game.shootWebAhead(),
                   ),
                   const SizedBox(width: 8),
@@ -368,7 +389,7 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'All 3 Viper tech cores recovered!\n'
+                      'All 3 Compound-V vials recovered!\n'
                       'Vulture\'s weapon data has been decoded on the city map.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -393,6 +414,134 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
                       },
                     ),
                   ],
+                ),
+              ),
+            ),
+
+          // Story Menu & Game Over Dialog
+          if (_isMenuOpen || game.player.health <= 0)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black87,
+                child: Center(
+                  child: SingleChildScrollView(
+                    child: PixelContainer(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                      backgroundColor: const Color(0xFF0F172A),
+                      borderColor: game.player.health <= 0
+                          ? const Color(0xFFEF4444)
+                          : const Color(0xFF00F0FF),
+                      borderWidth: 2.5,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 380),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              game.player.health <= 0 ? 'MISSION FAILED' : 'PAUSED',
+                              style: TextStyle(
+                                color: game.player.health <= 0
+                                    ? const Color(0xFFEF4444)
+                                    : Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                                fontFamily: 'monospace',
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'STORY MODE • PART 1: ABANDONED WAREHOUSE',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Color(0xFF94A3B8),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'monospace',
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            if (game.player.health > 0) ...[
+                              PixelButton(
+                                text: 'RESUME MISSION ▶',
+                                color: const Color(0xFF00F0FF),
+                                textColor: Colors.black,
+                                fontSize: 12,
+                                onPressed: () {
+                                  setState(() {
+                                    _isMenuOpen = false;
+                                  });
+                                },
+                              ),
+                              const SizedBox(height: 10),
+                            ],
+                            PixelButton(
+                              text: 'RESTART THIS PART ↺',
+                              color: const Color(0xFFF59E0B),
+                              textColor: Colors.black,
+                              fontSize: 12,
+                              onPressed: () {
+                                game.onRestartPart?.call();
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                            PixelButton(
+                              text: 'RESTART STORY FROM BEGINNING ↺',
+                              color: const Color(0xFFEF4444),
+                              textColor: Colors.white,
+                              fontSize: 11,
+                              onPressed: () {
+                                game.onRestartStory?.call();
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                            PixelButton(
+                              text: game.player.activeGodMode
+                                  ? '⚡ GODMODE: ON (IMMORTAL)'
+                                  : '⚡ GODMODE: OFF',
+                              color: game.player.activeGodMode
+                                  ? const Color(0xFFF59E0B)
+                                  : Colors.white24,
+                              textColor: game.player.activeGodMode ? Colors.black : Colors.white70,
+                              fontSize: 11,
+                              onPressed: () {
+                                setState(() {
+                                  game.player.isGodMode = !game.player.activeGodMode;
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                            PixelButton(
+                              text: 'GO TO PART 2 (ROOFTOPS) ▶',
+                              color: const Color(0xFF38BDF8),
+                              textColor: Colors.black,
+                              fontSize: 11,
+                              onPressed: () async {
+                                AudioManager.instance.resumeBgmIfSuspended();
+                                await StoryProgressService.instance.saveProgress(2);
+                                if (context.mounted) {
+                                  Navigator.of(context).pushReplacement(
+                                    MaterialPageRoute(builder: (_) => const MoonlitRooftopScreen()),
+                                  );
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                            PixelButton(
+                              text: 'EXIT TO MAIN MENU ◀',
+                              color: Colors.white24,
+                              textColor: Colors.white,
+                              fontSize: 11,
+                              onPressed: () {
+                                game.onExitToMenu?.call();
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -450,13 +599,155 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
     );
   }
 
+  Widget _buildPlayerHealthRow(Spidey player) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const Text(
+          'HP: ',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            fontFamily: 'monospace',
+          ),
+        ),
+        for (int i = 0; i < Spidey.maxHealth; i++)
+          Padding(
+            padding: const EdgeInsets.only(right: 2.5),
+            child: Icon(
+              i < player.health ? Icons.favorite : Icons.favorite_border,
+              color: i < player.health ? const Color(0xFFEF4444) : Colors.white24,
+              size: 16,
+            ),
+          ),
+        const SizedBox(width: 5),
+        Text(
+          '${player.health}/${Spidey.maxHealth}',
+          style: const TextStyle(
+            color: Color(0xFFEF4444),
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            fontFamily: 'monospace',
+          ),
+        ),
+        if (player.activeGodMode) ...[
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.bolt, color: Colors.black, size: 11),
+                Text(
+                  'GODMODE',
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w900,
+                    fontFamily: 'monospace',
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildPlayerWebFluidRow(Spidey player) {
+    final fluidInt = player.webFluid.clamp(0, 10).toInt();
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const Icon(Icons.stream, color: Color(0xFF38BDF8), size: 14),
+        const SizedBox(width: 4),
+        const Text(
+          'FLUID: ',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            fontFamily: 'monospace',
+          ),
+        ),
+        Container(
+          width: 70,
+          height: 9,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A),
+            borderRadius: BorderRadius.circular(3),
+            border: Border.all(color: const Color(0xFF38BDF8), width: 1.2),
+          ),
+          child: FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: (player.webFluid / Spidey.maxWebFluid).clamp(0.0, 1.0),
+            child: Container(
+              color: const Color(0xFF38BDF8),
+            ),
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          '$fluidInt/10',
+          style: const TextStyle(
+            color: Color(0xFF38BDF8),
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            fontFamily: 'monospace',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPlayerShieldBadge(Spidey player) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFACC15).withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: const Color(0xFFFACC15), width: 1.2),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.shield, color: Color(0xFFFACC15), size: 11),
+          const SizedBox(width: 4),
+          Text(
+            'SHIELD: ${player.shieldTimer.toStringAsFixed(1)}s',
+            style: const TextStyle(
+              color: Color(0xFFFACC15),
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBossEscapeArrowButton(WarehouseGame game) {
+    final aliveMinions = game.world.children.whereType<ViperGuard>().where((g) => !g.isDefeated).length;
+    final canPursue = aliveMinions == 0;
+    final borderColor = canPursue ? const Color(0xFFF59E0B) : const Color(0xFFEF4444);
+    final accentColor = canPursue ? const Color(0xFFF59E0B) : const Color(0xFFEF4444);
+
     return GestureDetector(
       onTap: () => game.pursueBossToExit(),
       child: PixelContainer(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         backgroundColor: const Color(0xFF1E1E2F).withValues(alpha: 0.95),
-        borderColor: const Color(0xFFF59E0B),
+        borderColor: borderColor,
         borderWidth: 2.5,
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -465,14 +756,18 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.warning_amber_rounded, color: Color(0xFFF59E0B), size: 14),
-                    SizedBox(width: 4),
+                    Icon(
+                      canPursue ? Icons.warning_amber_rounded : Icons.shield_outlined,
+                      color: accentColor,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
                     Text(
-                      'PURSUE BOSS ▶▶',
+                      canPursue ? 'PURSUE BOSS ▶▶' : 'CLEAR SENTRIES ($aliveMinions)',
                       style: TextStyle(
-                        color: Color(0xFFF59E0B),
+                        color: accentColor,
                         fontWeight: FontWeight.w900,
                         fontSize: 11,
                         fontFamily: 'monospace',
@@ -483,7 +778,9 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'EXIT: 70% MAP (${game.player.position.x.toInt().clamp(0, 1434)}/1434m)',
+                  canPursue
+                      ? 'EXIT: 70% MAP (${game.player.position.x.toInt().clamp(0, 1434)}/1434m)'
+                      : 'DEFEAT ALL SENTRIES TO PURSUE!',
                   style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 9,
@@ -497,18 +794,18 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: const Color(0xFFF59E0B),
+                color: accentColor,
                 borderRadius: BorderRadius.circular(4),
-                boxShadow: const [
+                boxShadow: [
                   BoxShadow(
-                    color: Color(0xFFF59E0B),
+                    color: accentColor,
                     blurRadius: 8,
                     spreadRadius: 1,
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.arrow_forward,
+              child: Icon(
+                canPursue ? Icons.arrow_forward : Icons.lock_clock,
                 color: Colors.black,
                 size: 18,
               ),
@@ -523,42 +820,46 @@ class _StoryQuestHudState extends State<StoryQuestHud> {
     required String label,
     required String subtitle,
     required Color color,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
   }) {
+    final isEnabled = onTap != null;
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: 62,
-        height: 62,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white, width: 2.5),
-          boxShadow: const [
-            BoxShadow(color: Colors.black, offset: Offset(3, 3)),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 11,
-                fontFamily: 'monospace',
+      child: Opacity(
+        opacity: isEnabled ? 1.0 : 0.55,
+        child: Container(
+          width: 62,
+          height: 62,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white, width: 2.5),
+            boxShadow: const [
+              BoxShadow(color: Colors.black, offset: Offset(3, 3)),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                ),
               ),
-            ),
-            Text(
-              subtitle,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 8,
-                fontFamily: 'monospace',
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 8,
+                  fontFamily: 'monospace',
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

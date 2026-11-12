@@ -53,6 +53,10 @@ class GameConfig {
   static const int playerMaxHealth = 100;
   static const int thugMaxHealth = 30;
 
+  // Testing & Developer cheats
+  // Godmode enabled for user testing: Spidey takes 0 damage, infinite web fluid, instant skill cooldown
+  static bool godMode = true;
+
   // Visuals & Comic FX
   static const double comicFxDuration = 0.65;
 }

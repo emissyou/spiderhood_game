@@ -68,21 +68,30 @@ flutter:
     - assets/images/player/swing/
     - assets/images/player/web_swing/
     - assets/images/player/attack/
-    - assets/images/player/attack/punch_1/
-    - assets/images/player/attack/punch_2/
-    - assets/images/player/walking/
-    - assets/images/player/skill_1/
+    - assets/images/player/attack/kick/
+    - assets/images/player/attack/punch/
+    - assets/images/player/attack/skill_1/
+    - assets/images/player/running/
+    - assets/images/player/hurt/
     - assets/images/civilian/
     - assets/images/civilian/civilian_1/walking/
     - assets/images/civilian/civilian_2/walking/
     - assets/images/car/
     - assets/images/car/taxi/
     - assets/images/enemies/
+    - assets/images/enemies/minion_wgun/
+    - assets/images/enemies/minion_wgun/attack/
+    - assets/images/enemies/minion_wgun/defeated/
+    - assets/images/enemies/minion_wgun/hurt/
+    - assets/images/enemies/minion_wgun/shoot effeck/
+    - assets/images/enemies/minion_wgun/walk/
     - assets/images/comic_fx/
+    - assets/images/drop/
     - assets/images/environment/
     - assets/images/story/part_1/
     - assets/images/story/part_1/starting_scenario/
     - assets/images/story/part_1/escape_scenario/
+    - assets/images/story/part_1/after_escape_scenario/
     - assets/images/story/enemy/minion/
     - assets/images/story/enemy/minion/idle/
     - assets/images/story/enemy/minion/running/

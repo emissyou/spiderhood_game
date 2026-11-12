@@ -31,7 +31,9 @@ class WebMark extends PositionComponent with HasGameReference {
     super.update(dt);
     _remaining -= dt;
     if (_remaining <= 0) {
-      removeFromParent();
+      Future.microtask(() {
+        if (isMounted) removeFromParent();
+      });
     }
   }
 

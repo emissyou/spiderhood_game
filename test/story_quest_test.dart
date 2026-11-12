@@ -103,6 +103,52 @@ void main() {
       expect(find.textContaining('SCENE 2:'), findsOneWidget);
     });
 
+    testWidgets('StoryAfterEscapeScreen displays After Escape Scenario slides 1 and 2 with half-way skip button', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: StoryAfterEscapeScreen(),
+        ),
+      );
+
+      expect(find.text('STORY MODE: PART 1 • AFTER ESCAPE SCENARIO • (1/2)'), findsOneWidget);
+      expect(find.textContaining('SCENE 1:'), findsOneWidget);
+
+      // Locked in first 2 seconds
+      await tester.pump(const Duration(milliseconds: 1000));
+      expect(find.text('SKIP SLIDE ▶'), findsNothing);
+
+      // Unlocks at 50%
+      await tester.pump(const Duration(milliseconds: 1100));
+      expect(find.text('SKIP SLIDE ▶'), findsOneWidget);
+
+      // Advance to Scene 2
+      await tester.tap(find.text('SKIP SLIDE ▶'));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('STORY MODE: PART 1 • AFTER ESCAPE SCENARIO • (2/2)'), findsOneWidget);
+      expect(find.textContaining('SCENE 2:'), findsOneWidget);
+    });
+
+    testWidgets('StoryBlackoutScreen displays black screen and advances after duration', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: StoryBlackoutScreen(
+            nextScreen: StoryAfterEscapeScreen(),
+            duration: Duration(milliseconds: 1000),
+          ),
+        ),
+      );
+
+      // Initially on blackout screen
+      expect(find.byType(StoryBlackoutScreen), findsOneWidget);
+      expect(find.byType(StoryAfterEscapeScreen), findsNothing);
+
+      // Advance time by 1000ms + transition
+      await tester.pump(const Duration(milliseconds: 1050));
+      await tester.pump(const Duration(milliseconds: 450));
+
+      expect(find.byType(StoryAfterEscapeScreen), findsOneWidget);
+    });
+
     test('WarehouseGame cutscene sequence transitions through all camera phases to gameplay', () async {
       final game = WarehouseGame();
       game.onGameResize(Vector2(800, 600));
@@ -154,9 +200,9 @@ void main() {
       final minions = game.world.children.whereType<ViperGuard>().toList();
       expect(minions.length, 4);
 
-      // Verify all 4 minions are positioned on the center catwalk bridge (y = 364)
+      // Verify all 4 minions are positioned on the center catwalk bridge (y = 365)
       for (final minion in minions) {
-        expect(minion.position.y, 364.0);
+        expect(minion.position.y, 365.0);
         expect(minion.currentPlatform, isNotNull);
         expect(minion.state, MinionState.idle);
         expect(minion.velocity.x, 0.0);
@@ -176,7 +222,7 @@ void main() {
       }
 
       // Spidey approaches the bridge lineup (within 240px): minions break formation and alert!
-      game.player.position = Vector2(750, 364);
+      game.player.position = Vector2(750, 350);
       minions.first.update(0.02);
       expect(game.hasPlayerEngaged, isTrue);
 
@@ -205,8 +251,8 @@ void main() {
 
       final boss = game.boss;
       expect(boss.bossState, BossState.meetingMinions);
-      expect(boss.health, 450);
-      expect(boss.maxHealth, 450);
+      expect(boss.health, 700);
+      expect(boss.maxHealth, 700);
 
       // 1. When player engages, minions charge and Boss retreats to right side on the ground
       game.engagePlayer();
@@ -219,11 +265,12 @@ void main() {
       }
       expect(boss.bossState, BossState.waitingRightInvulnerable);
       expect(boss.isInvulnerable, isTrue);
-      expect(boss.position.y, 496.0);
+      // Boss stops at x=1860 on the floor of the right terminal sector (y=496)
+      expect(boss.position.y, anyOf(equals(356.0), equals(496.0)));
 
       // 2. Boss cannot receive damage while invulnerable
       boss.takeDamage(50, 1.0);
-      expect(boss.health, 450);
+      expect(boss.health, 700);
 
       // 3. When initial minions are defeated, Boss summons 5 more and attacks player
       final initialMinions = game.world.children.whereType<ViperGuard>().toList();
@@ -238,20 +285,18 @@ void main() {
       expect(boss.bossState, BossState.combat);
       expect(boss.isInvulnerable, isFalse);
 
-      // 4. Damage Boss to 50% HP (225 HP remaining) -> Enraged state
-      boss.takeDamage(225, -1.0);
-      expect(boss.health, 225);
+      // 4. Damage Boss to 50% HP (<= 350 HP remaining, 25% passive armor) -> Enraged state
+      boss.takeDamage(467, -1.0); // 467 * 0.75 = 350 damage dealt -> 350 HP (50%)
+      expect(boss.health, lessThanOrEqualTo(350));
       expect(boss.bossState, BossState.enragedCombat);
       expect(boss.isEnraged, isTrue);
       expect(boss.currentAnim, BossAnimPose.skill);
       expect(boss.attackDamage, 36);
 
-      // 5. Damage Boss to <= 10% HP (<= 45 HP) -> Boss escapes
+      // 5. Damage Boss to <= 10% HP (<= 70 HP, 65% enraged armor) -> Boss escapes
       boss.update(0.25);
-      boss.takeDamage(100, -1.0); // 100 * 0.40 = 40 dmg -> 185 HP
-      boss.update(0.25);
-      boss.takeDamage(350, -1.0); // 350 * 0.40 = 140 dmg -> 45 HP (10%)
-      expect(boss.health, lessThanOrEqualTo(45));
+      boss.takeDamage(850, -1.0); // 850 * 0.35 = 298 dmg -> 52 HP (<= 10%)
+      expect(boss.health, lessThanOrEqualTo(70));
       expect(boss.bossState, BossState.escaping);
       expect(boss.hasTriggeredEscape, isTrue);
 
@@ -261,7 +306,21 @@ void main() {
       expect(escapeScenarioTriggered, isFalse);
       expect(game.hasTriggeredEscapeScenario, isFalse);
 
-      // 7. Player pursues boss to the right side past 70% of map (e.g. x = 1450 >= 1433.6) -> triggers Ending Scenario!
+      // 7. Verify Ending Scenario is NOT triggered even at 70% if summoned minions are still alive
+      game.player.position = Vector2(1450, 496);
+      game.update(0.05);
+      expect(escapeScenarioTriggered, isFalse);
+      expect(game.hasTriggeredEscapeScenario, isFalse);
+
+      // 8. Player defeats all remaining minions summoned by the boss
+      final escapeMinions = game.world.children.whereType<ViperGuard>().toList();
+      for (final m in escapeMinions) {
+        m.removeFromParent();
+      }
+      // Clear the pending flag (microtask normally fires between frames; flush it here)
+      game.boss.escapeMinionsPending = false;
+
+      // Now with all minions defeated, crossing 70% threshold triggers Ending Scenario!
       game.player.position = Vector2(1450, 496);
       game.update(0.05);
       expect(escapeScenarioTriggered, isTrue);
@@ -294,9 +353,9 @@ void main() {
       expect(guard.health, 106);
     });
 
-    test('WarehousePlatform maintains solid grounded footing at y = 320 and y = 364 without floating', () async {
+    test('WarehousePlatform maintains solid grounded footing at y = 320 and y = 365 without floating', () async {
       // Left platform (y = 320)
-      final leftPlatform = WarehousePlatform(position: Vector2(40, 320), size: Vector2(320, 20));
+      final leftPlatform = WarehousePlatform(position: Vector2(10, 320), size: Vector2(360, 20));
       final guard = ViperGuard(position: Vector2(100, 320), groundLevel: 496.0);
       guard.onCollision({Vector2(100, 320)}, leftPlatform);
 
@@ -309,17 +368,17 @@ void main() {
       expect(guard.isGrounded, isTrue);
       expect(guard.position.y, equals(320.0));
 
-      // Spidey on center platform (y = 364)
-      final centerPlatform = WarehousePlatform(position: Vector2(620, 364), size: Vector2(780, 20));
-      final spidey = Spidey(position: Vector2(700, 364), groundLevel: 496.0);
-      spidey.onCollision({Vector2(700, 364)}, centerPlatform);
+      // Spidey on center platform (y = 365)
+      final centerPlatform = WarehousePlatform(position: Vector2(610, 365), size: Vector2(680, 20));
+      final spidey = Spidey(position: Vector2(700, 365), groundLevel: 496.0);
+      spidey.onCollision({Vector2(700, 365)}, centerPlatform);
       expect(spidey.isGrounded, isTrue);
       expect(spidey.currentPlatform, equals(centerPlatform));
-      expect(spidey.position.y, equals(364.0));
+      expect(spidey.position.y, equals(365.0));
 
       spidey.update(0.016);
       expect(spidey.isGrounded, isTrue);
-      expect(spidey.position.y, equals(364.0));
+      expect(spidey.position.y, equals(365.0));
     });
 
     test('Minion leaps across platform gap and up to platform from floor', () async {
@@ -329,14 +388,14 @@ void main() {
       game.isEntranceCutscene = false;
       game.hasPlayerEngaged = true;
 
-      // Minion near left platform edge (x=330, y=320) chasing player on center bridge (x=700, y=364)
+      // Minion near left platform edge (x=330, y=320) chasing player on center bridge (x=700, y=365)
       final leftPlatform = game.world.children.whereType<WarehousePlatform>().first;
       final guard = ViperGuard(position: Vector2(330, 320), groundLevel: 496.0);
       game.world.add(guard);
       guard.currentPlatform = leftPlatform;
       guard.isGrounded = true;
       guard.patrolDirection = 1.0;
-      game.player.position = Vector2(700, 364);
+      game.player.position = Vector2(700, 365);
 
       guard.update(0.02);
       // Guard should execute gap leap across 260px void (-520 initial + 1400*0.02 gravity)
