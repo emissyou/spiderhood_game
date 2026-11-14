@@ -28,6 +28,21 @@ class MoonlitRooftopGame extends FlameGame
   VoidCallback? onRestartStory;
   VoidCallback? onMissionComplete;
 
+  int totalEnemies = 4;
+  int defeatedEnemies = 0;
+  bool isMissionCompleted = false;
+
+  void checkMissionCompletion() {
+    final remainingGuards = world.children.whereType<ViperGuard>().where((g) => !g.isDefeated).length;
+    final remainingGunMinion = (gunMinion.isMounted && !gunMinion.isDefeated) ? 1 : 0;
+    if (remainingGuards + remainingGunMinion == 0 && !isMissionCompleted) {
+      isMissionCompleted = true;
+      Future.delayed(const Duration(milliseconds: 1200), () {
+        onMissionComplete?.call();
+      });
+    }
+  }
+
   static const double mapWidth = MoonlitRooftopBackground.mapWidth; // 2172.0
   static const double mapHeight = MoonlitRooftopBackground.mapHeight; // 724.0
 
@@ -73,23 +88,15 @@ class MoonlitRooftopGame extends FlameGame
     world.add(MoonlitRooftopBackground());
 
     // 2. Rooftop Platforms accurately leveled to visual rooftop parapets:
-    // Building 1 (left): x: 0..195, y: 428.0
-    // Building 2: x: 316..531, y: 506.0
-    // Building 3 (main): x: 670..900, y: 430.0
-    // Building 3 (ledge): x: 888..1023, y: 520.0
-    // Building 4 (roof below billboard): x: 1208..1453, y: 472.0
-    // Building 4 (billboard top): x: 1208..1453, y: 370.0
-    // Building 5 (radio tower): x: 1635..1855, y: 470.0
-    // Building 6 (right): x: 1980..2172, y: 442.0
+    // Platform height equals the full height of each building down to the bottom of the map (mapHeight = 724)
     platforms.addAll([
-      WarehousePlatform(position: Vector2(0, 428), size: Vector2(195, 24)),
-      WarehousePlatform(position: Vector2(316, 506), size: Vector2(215, 24)),
-      WarehousePlatform(position: Vector2(670, 430), size: Vector2(230, 24)),
-      WarehousePlatform(position: Vector2(888, 520), size: Vector2(135, 24)),
-      WarehousePlatform(position: Vector2(1208, 472), size: Vector2(245, 24)),
-      WarehousePlatform(position: Vector2(1208, 370), size: Vector2(245, 20)),
-      WarehousePlatform(position: Vector2(1635, 470), size: Vector2(220, 24)),
-      WarehousePlatform(position: Vector2(1980, 442), size: Vector2(192, 24)),
+      WarehousePlatform(position: Vector2(0, 414), size: Vector2(192, mapHeight - 414)),    // Building 1 (Height: 310)
+      WarehousePlatform(position: Vector2(323, 536), size: Vector2(209, mapHeight - 536)),  // Building 2 (Height: 188, lessen 7 left, 2 right)
+      WarehousePlatform(position: Vector2(675, 460), size: Vector2(215, mapHeight - 460)),  // Building 3 (Height: 264, lessen 5 left)
+      WarehousePlatform(position: Vector2(888, 549), size: Vector2(130, mapHeight - 549)),  // Building 3 ledge (Height: 175)
+      WarehousePlatform(position: Vector2(1212, 491), size: Vector2(239, mapHeight - 491)), // Building 4 (Height: 233, lessen 4 left, 2 right)
+      WarehousePlatform(position: Vector2(1641, 500), size: Vector2(212, mapHeight - 500)), // Building 5 (Height: 224, lessen 6 left, 2 right)
+      WarehousePlatform(position: Vector2(1987, 472), size: Vector2(185, mapHeight - 472)), // Building 6 (Height: 252, lessen 7 left)
     ]);
 
     for (final p in platforms) {
@@ -126,50 +133,62 @@ class MoonlitRooftopGame extends FlameGame
       world.add(anchor);
     }
 
-    // 4. Hero Spawn: Spawns directly on the first platform (x = 80, y = 428)
+    // 4. Hero Spawn: Spawns directly on the first platform (x = 80, y = 414)
     player = Spidey(
-      position: Vector2(80, 428),
+      position: Vector2(80, 414),
       groundLevel: mapHeight,
     );
+    // Part 2 mechanics: 3 Hearts life, no health regen, max 1.0s swing hold, shorter swing, shorter release, longer cooldown, higher skill shot
+    player.maxHearts = 3;
+    player.health = 3;
+    player.allowHealthRegen = false;
+    player.maxWebDistanceOverride = 110.0;
+    player.maxSwingDuration = 1.0;
+    player.swingCooldownMax = 1.8;
+    player.swingReleaseFactor = 0.45;
+    player.skillShotHeightOffset = 14.0;
     player.isGrounded = true;
     player.currentPlatform = platforms.first;
     world.add(player);
 
-    // 5. Initial Rooftop Supply Drops
-    _spawnDropAt(Vector2(420, 506), DropType.webFluid);
-    _spawnDropAt(Vector2(1320, 472), DropType.heal);
+    // 5. Initial Rooftop Supply Drops (No heal drops in Part 2!)
+    _spawnDropAt(Vector2(420, 536), DropType.webFluid);
+    _spawnDropAt(Vector2(1320, 491), DropType.shield);
 
-    // 6. Rooftop Patrol Guards on intermediate buildings
+    // 6. Rooftop Patrol Guards on intermediate buildings (lowered by 20px onto rooftop parapets)
     final guardPositions = [
-      Vector2(780, 430),
-      Vector2(1350, 472),
-      Vector2(1750, 470),
+      Vector2(780, 480),   // Building 3 (platform 460 + 20)
+      Vector2(1350, 511),  // Building 4 (platform 491 + 20)
+      Vector2(1750, 520),  // Building 5 (platform 500 + 20)
     ];
     for (int i = 0; i < guardPositions.length; i++) {
       final guard = ViperGuard(
         position: guardPositions[i],
         groundLevel: mapHeight,
         patrolRange: 100.0,
+        standingOffsetY: 20.0,
+        onDefeated: () {
+          defeatedEnemies++;
+          checkMissionCompletion();
+        },
       );
       guard.currentPlatform = _findPlatformAt(guardPositions[i].x, guardPositions[i].y);
       guard.isGrounded = true;
       world.add(guard);
     }
 
-    // 7. Marksman Minion (minion_wgun) on the Last Building (Platform 8: 1980..2172, y = 442)
+    // 7. Marksman Minion (minion_wgun) on the Last Building (lowered by 20px: platform 472 + 20 = 492)
     gunMinion = MinionWithGun(
-      position: Vector2(2080, 442),
+      position: Vector2(2080, 492),
       groundLevel: mapHeight,
       minPatrolX: 2010.0,
       maxPatrolX: 2150.0,
       onDefeated: () {
-        // Final sniper defeated on the rooftop!
-        Future.delayed(const Duration(milliseconds: 1200), () {
-          onMissionComplete?.call();
-        });
+        defeatedEnemies++;
+        checkMissionCompletion();
       },
     );
-    gunMinion.currentPlatform = _findPlatformAt(2080, 442);
+    gunMinion.currentPlatform = _findPlatformAt(2080, 472);
     gunMinion.isFacingRight = false; // Aims left towards Spidey's approach
     world.add(gunMinion);
 
@@ -213,10 +232,9 @@ class MoonlitRooftopGame extends FlameGame
     final dropX = plat.position.x + 30.0 + _random.nextDouble() * math.max(10.0, plat.size.x - 60.0);
     final dropY = plat.position.y;
 
-    final typeRoll = _random.nextInt(3);
-    final type = typeRoll == 0
-        ? DropType.heal
-        : (typeRoll == 1 ? DropType.webFluid : DropType.shield);
+    final typeRoll = _random.nextInt(2);
+    // In Part 2: No health regen drops! Only web fluid and shield
+    final type = typeRoll == 0 ? DropType.webFluid : DropType.shield;
 
     _spawnDropAt(Vector2(dropX, dropY), type);
   }
@@ -232,8 +250,8 @@ class MoonlitRooftopGame extends FlameGame
       _spawnRandomDrop();
     }
 
-    // Safety Alley Pit Check: If Spidey falls below rooftops without a web attachment
-    if (player.position.y > 680.0 && player.state != SpideyState.swinging) {
+    // Safety Alley Pit Check: Only respawn after falling all the way to the bottom of the building
+    if (player.position.y >= mapHeight - 4.0 && player.state != SpideyState.swinging) {
       _handlePitFall();
     }
 
@@ -253,22 +271,11 @@ class MoonlitRooftopGame extends FlameGame
   }
 
   void _handlePitFall() {
-    // Find closest platform
-    WarehousePlatform nearest = platforms.first;
-    double minD = (player.position.x - (nearest.position.x + nearest.size.x * 0.5)).abs();
-    for (final p in platforms) {
-      final d = (player.position.x - (p.position.x + p.size.x * 0.5)).abs();
-      if (d < minD) {
-        minD = d;
-        nearest = p;
-      }
-    }
-
-    // Respawn on nearest platform
-    player.position = Vector2(nearest.position.x + nearest.size.x * 0.5, nearest.position.y);
+    // Respawn Spidey at the start of Part 2 (Building 1)
+    player.position = Vector2(80, 414);
     player.velocity = Vector2.zero();
     player.isGrounded = true;
-    player.currentPlatform = nearest;
+    player.currentPlatform = platforms.first;
     player.state = SpideyState.idle;
     player.takeDamage(10); // 1 heart penalty
     AudioManager.instance.playWebShoot();
@@ -302,16 +309,20 @@ class MoonlitRooftopGame extends FlameGame
     camera.viewfinder.anchor = Anchor(0.5, newAnchorY);
 
     // Keep camera smoothly within skyline boundaries with zoomed-out visible window
+    // Top of the viewport is camY - (anchor.y * size.y) / zoom.
+    // Clamping minCamY ensures the camera view never extends above Y = 0 (eliminating top border line).
     final zoom = math.max(0.1, camera.viewfinder.zoom);
-    final halfVisibleW = (size.x * 0.5) / zoom;
-    final halfVisibleH = (size.y * 0.5) / zoom;
-    final minCamX = math.min(mapWidth * 0.5, halfVisibleW);
-    final maxCamX = math.max(mapWidth * 0.5, mapWidth - halfVisibleW);
-    final camX = player.position.x.clamp(minCamX, maxCamX);
+    final minCamX = (camera.viewfinder.anchor.x * size.x) / zoom;
+    final maxCamX = mapWidth - ((1.0 - camera.viewfinder.anchor.x) * size.x) / zoom;
+    final camX = minCamX >= maxCamX
+        ? mapWidth * 0.5
+        : player.position.x.clamp(minCamX, maxCamX);
 
-    final minCamY = math.min(mapHeight * 0.5, halfVisibleH * 0.7);
-    final maxCamY = math.max(mapHeight * 0.5, mapHeight - (halfVisibleH * 0.3));
-    final camY = (player.position.y - 20.0).clamp(minCamY, maxCamY);
+    final minCamY = (camera.viewfinder.anchor.y * size.y) / zoom;
+    final maxCamY = mapHeight - ((1.0 - camera.viewfinder.anchor.y) * size.y) / zoom;
+    final camY = minCamY >= maxCamY
+        ? mapHeight * 0.5
+        : (player.position.y - 20.0).clamp(minCamY, maxCamY);
     camera.viewfinder.position = Vector2(camX, camY);
   }
 
@@ -404,7 +415,7 @@ class MoonlitRooftopGame extends FlameGame
       if (dy >= -20) continue; // Must be overhead
 
       final dist = math.sqrt(dx * dx + dy * dy);
-      if (dist < 40.0 || dist > 450.0) continue;
+      if (dist < 20.0 || dist > 190.0) continue; // Shorter web reach for Part 2
 
       final isForward = (dx * dir) > -30.0;
       final score = dist - (isForward ? 70.0 : 0.0);
@@ -417,9 +428,9 @@ class MoonlitRooftopGame extends FlameGame
     if (bestAnchor != null) {
       player.shootWeb(bestAnchor.position.clone());
     } else {
-      // Automatic overhead swing point
-      final fallbackX = player.position.x + (player.isFacingRight ? 120.0 : -120.0);
-      final fallbackY = math.max(60.0, player.position.y - 180.0);
+      // Automatic overhead swing point (shorter, tight rooftop arc)
+      final fallbackX = player.position.x + (player.isFacingRight ? 50.0 : -50.0);
+      final fallbackY = math.max(60.0, player.position.y - 85.0);
       player.shootWeb(Vector2(fallbackX, fallbackY));
     }
   }

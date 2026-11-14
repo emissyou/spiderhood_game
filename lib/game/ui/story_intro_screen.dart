@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:spideyhood/game/services/audio_manager.dart';
 import 'package:spideyhood/game/services/story_progress_service.dart';
 import 'package:spideyhood/game/story/warehouse_game.dart';
+import 'package:spideyhood/game/ui/harbor_loading_screen.dart';
 import 'package:spideyhood/game/ui/mode_select_screen.dart';
 import 'package:spideyhood/game/ui/moonlit_loading_screen.dart';
 import 'package:spideyhood/game/ui/pixel_widgets.dart';
@@ -525,6 +526,49 @@ class StoryAfterEscapeScreen extends StatelessWidget {
             transitionDuration: const Duration(milliseconds: 500),
           ),
         );
+      },
+      onBackToMenu: () {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const ModeSelectScreen()),
+        );
+      },
+    );
+  }
+}
+
+/// Cinematic Story Part 2 screen triggered after defeating the enemy with gun in Moonlit Rooftop.
+class StoryPart2Screen extends StatelessWidget {
+  const StoryPart2Screen({super.key});
+
+  static const List<String> part2Images = [
+    'assets/images/story/part_2/1.png',
+    'assets/images/story/part_2/2.png',
+  ];
+
+  static const List<String> part2Captions = [
+    'SCENE 1: THE ROOFTOP NETWORK IS SECURED. AN ENCRYPTED COMMS RELAY REVEALS THE SYNDICATE CARGO DOCK COORDINATES.',
+    'SCENE 2: THE VIPER CARTEL IS SMUGGLING HIGH-TECH MUNITIONS AT THE MANHATTAN HARBOR! HEAD TO THE WATERFRONT!',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return StoryViewerScreen(
+      modeBadgeText: 'STORY MODE: CHAPTER 2 • CITY ROOFTOPS CONCLUSION',
+      images: part2Images,
+      captions: part2Captions,
+      onComplete: () async {
+        await StoryProgressService.instance.completePart2();
+        if (context.mounted) {
+          Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+              pageBuilder: (context, anim1, anim2) => const HarborLoadingScreen(),
+              transitionsBuilder: (context, anim1, anim2, child) {
+                return FadeTransition(opacity: anim1, child: child);
+              },
+              transitionDuration: const Duration(milliseconds: 500),
+            ),
+          );
+        }
       },
       onBackToMenu: () {
         Navigator.of(context).pushReplacement(

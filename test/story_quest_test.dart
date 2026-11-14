@@ -431,5 +431,42 @@ void main() {
       game.player.punch();
       expect(guard.health, 108); // 126 - 18 = 108
     });
+
+    test('ViperBoss can still attack even while taking damage (uninterrupted poise)', () async {
+      final game = WarehouseGame();
+      game.onGameResize(Vector2(800, 600));
+      await game.onLoad();
+      game.isEntranceCutscene = false;
+      game.hasPlayerEngaged = true;
+
+      final boss = game.world.children.whereType<ViperBoss>().first;
+      boss.bossState = BossState.combat;
+      game.player.position = Vector2(500, 496);
+      boss.position = Vector2(520, 496);
+      game.player.health = 100;
+
+      // Advance past initial attack cooldown so boss is primed to attack
+      boss.update(1.0);
+
+      // Spidey damages the boss
+      boss.takeDamage(24, 1.0);
+      expect(boss.health, lessThan(boss.maxHealth));
+
+      // Boss updates frame: despite taking damage, boss initiates punch or kick!
+      boss.update(0.016);
+      expect(
+        boss.animPose == BossAnimPose.punching || boss.animPose == BossAnimPose.kicking,
+        isTrue,
+      );
+      expect(game.player.health, lessThan(100));
+
+      // While boss is in the middle of attacking, boss takes damage again
+      boss.takeDamage(20, 1.0);
+      // Hyper-armor ensures attack animation is NOT interrupted into hurt flinch
+      expect(
+        boss.animPose == BossAnimPose.punching || boss.animPose == BossAnimPose.kicking,
+        isTrue,
+      );
+    });
   });
 }

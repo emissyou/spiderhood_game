@@ -33,7 +33,7 @@ class GunBullet extends PositionComponent with CollisionCallbacks {
     this.maxDistance = 2600.0,
   }) : super(
           position: position,
-          size: Vector2(44, 12),
+          size: Vector2(30, 8),
           anchor: Anchor.center,
         ) {
     if (targetPosition != null) {
@@ -43,11 +43,8 @@ class GunBullet extends PositionComponent with CollisionCallbacks {
       _velocityUnit = Vector2(direction, 0.0);
     }
 
-    if (_velocityUnit.x < 0) {
-      angle = math.atan2(_velocityUnit.y, _velocityUnit.x) - math.pi;
-    } else {
-      angle = math.atan2(_velocityUnit.y, _velocityUnit.x);
-    }
+    // Bullet rotates accurately towards its travel vector
+    angle = math.atan2(_velocityUnit.y, _velocityUnit.x);
   }
 
   @override
@@ -77,17 +74,30 @@ class GunBullet extends PositionComponent with CollisionCallbacks {
 
     if (_hasHit) return;
 
+    final prevPosition = position.clone();
     final moveDist = speed * dt;
     position += _velocityUnit * moveDist;
     _distanceTraveled += moveDist;
 
-    // Check hit against player
+    // Check hit against player - swept segment ensures fast bullets never tunnel through player's body
     if (parent != null) {
-      final bulletRect = toRect().inflate(4.0);
       final player = parent!.children.whereType<Spidey>().firstOrNull;
-      if (player != null && !player.isDefeated && bulletRect.overlaps(player.toRect())) {
-        _impactPlayer(player);
-        return;
+      if (player != null && !player.isDefeated) {
+        final playerBody = player.toRect();
+        final sweptRect = Rect.fromPoints(
+          Offset(
+            math.min(prevPosition.x, position.x) - size.x * 0.5,
+            math.min(prevPosition.y, position.y) - size.y * 0.5,
+          ),
+          Offset(
+            math.max(prevPosition.x, position.x) + size.x * 0.5,
+            math.max(prevPosition.y, position.y) + size.y * 0.5,
+          ),
+        );
+        if (sweptRect.overlaps(playerBody)) {
+          _impactPlayer(player);
+          return;
+        }
       }
     }
 
@@ -101,7 +111,16 @@ class GunBullet extends PositionComponent with CollisionCallbacks {
   void _impactPlayer(Spidey player) {
     if (_hasHit) return;
     _hasHit = true;
+    final knockbackDir = direction >= 0 ? 1.0 : -1.0;
+    if (player.state == SpideyState.swinging) {
+      player.releaseWeb();
+    }
     player.takeDamage(10); // Deals 1 heart damage
+    // Moderate, punchy stagger knockback that doesn't fling the player too far
+    player.velocity.x = knockbackDir * 85.0;
+    player.velocity.y = -50.0;
+    player.isGrounded = false;
+    player.currentPlatform = null;
     Future.microtask(() {
       if (isMounted) removeFromParent();
     });
@@ -120,12 +139,6 @@ class GunBullet extends PositionComponent with CollisionCallbacks {
   void render(Canvas canvas) {
     super.render(canvas);
 
-    canvas.save();
-    if (direction < 0) {
-      canvas.scale(-1.0, 1.0);
-      canvas.translate(-size.x, 0.0);
-    }
-
     if (_bulletSprite != null) {
       _bulletSprite!.render(canvas, size: size);
     } else {
@@ -137,11 +150,10 @@ class GunBullet extends PositionComponent with CollisionCallbacks {
       canvas.drawRRect(glowRect, _fallbackGlowPaint);
 
       final coreRect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(4, 2, math.max(4.0, size.x - 8), size.y - 4),
+        Rect.fromLTWH(2, 1, math.max(4.0, size.x - 4), size.y - 2),
         const Radius.circular(2),
       );
       canvas.drawRRect(coreRect, _fallbackCorePaint);
     }
-    canvas.restore();
   }
 }

@@ -146,8 +146,18 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
   WarehousePlatform? currentPlatform;
   double _platformDropTimer = 0.0;
 
-  // Combat state (5 Hearts system, Web Fluid limit & Skill Cooldown)
+  // Combat state (Hearts system, Web Fluid limit & Skill Cooldown)
   static const int maxHealth = 5;
+  int maxHearts = maxHealth;
+  int get effectiveMaxHealth => maxHearts;
+  bool allowHealthRegen = true;
+  double? maxWebDistanceOverride;
+  double swingCooldown = 0.0;
+  double swingCooldownMax = 0.0;
+  double swingReleaseFactor = 1.0;
+  double? maxSwingDuration;
+  double _currentSwingDuration = 0.0;
+  double skillShotHeightOffset = 0.0;
   int health = maxHealth;
   bool get isDefeated => health <= 0;
   static const int maxWebFluid = 10;
@@ -347,9 +357,13 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
 
   /// Fire a web at any target anchor point
   void shootWeb(Vector2 targetAnchor) {
+    if (swingCooldown > 0) return;
     if (!activeGodMode && webFluid < 1.0) {
       AudioManager.instance.playButtonClick();
       return;
+    }
+    if (swingCooldownMax > 0) {
+      swingCooldown = swingCooldownMax;
     }
     if (!activeGodMode) {
       webFluid = math.max(0.0, webFluid - 1.0);
@@ -366,7 +380,8 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
     final dist = diff.length;
 
     webAnchor = effectiveAnchor;
-    webLength = math.min(dist, GameConfig.maxWebDistance);
+    final maxDist = maxWebDistanceOverride ?? GameConfig.maxWebDistance;
+    webLength = math.min(dist, maxDist);
 
     // Calculate initial swing angle (0 = directly below anchor)
     final offset = (position - Vector2(0, size.y / 2)) - effectiveAnchor;
@@ -390,6 +405,7 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
 
     state = SpideyState.swinging;
     isGrounded = false;
+    _currentSwingDuration = 0.0;
     AudioManager.instance.playWebShoot();
 
     // Pick randomly between web swing sprites 1, 2, and 3
@@ -404,23 +420,28 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
     AudioManager.instance.playSwing();
 
     // Leave a web mark (using web_swing/4.png) at the anchor tip that dissolves over 7 seconds
-    if (parent != null) {
-      parent!.add(WebMark(position: webAnchor!.clone()));
-    }
+    final markPos = webAnchor!.clone();
+    Future.microtask(() {
+      if (parent != null) {
+        parent!.add(WebMark(position: markPos));
+      }
+    });
 
     final tangentialSpeed = angularVelocity * webLength;
     final boost = withBoost ? GameConfig.swingBoostImpulse : 0.0;
-    final speedWithBoost = tangentialSpeed + (angularVelocity > 0 ? boost : -boost);
+    final speedWithBoost = (tangentialSpeed + (angularVelocity > 0 ? boost : -boost)) * swingReleaseFactor;
 
     // Convert angular velocity back to Cartesian velocity vector
     velocity.x = math.cos(swingAngle) * speedWithBoost;
-    velocity.y = -math.sin(swingAngle) * speedWithBoost - (withBoost ? 180.0 : 0.0);
+    velocity.y = (-math.sin(swingAngle) * speedWithBoost - (withBoost ? 180.0 * swingReleaseFactor : 0.0));
 
     // Clamp horizontal launch speed to solid superhero bounds
-    velocity.x = velocity.x.clamp(-750.0, 750.0);
+    final maxHorizontal = 750.0 * swingReleaseFactor;
+    velocity.x = velocity.x.clamp(-maxHorizontal, maxHorizontal);
     velocity.y = velocity.y.clamp(-650.0, 450.0);
 
     webAnchor = null;
+    _currentSwingDuration = 0.0;
     state = SpideyState.jumping;
     _jumpTimer = 0.0;
     _currentJumpIndex = 0;
@@ -531,12 +552,12 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
     }
   }
 
-  /// Take damage from enemies or boss attacks (5 Hearts system with invulnerability & shield)
+  /// Take damage from enemies or boss attacks (Hearts system with invulnerability & shield)
   void takeDamage(int amount) {
     if (health <= 0) return;
     if (activeGodMode) {
       // In Godmode, Spidey is completely invincible (infinite health)
-      health = maxHealth;
+      health = effectiveMaxHealth;
       AudioManager.instance.playButtonClick();
       Future.microtask(() {
         if (parent != null) {
@@ -607,7 +628,8 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
     if (parent == null) return;
     final dir = isFacingRight ? 1.0 : -1.0;
     final handX = position.x + dir * (size.x * 0.82);
-    final handY = position.y - (size.y * 0.735);
+    // Adjusted upward so the web shot aligns directly with Spidey's outstretched hand
+    final handY = position.y - (size.y * 1.02) - skillShotHeightOffset;
     const ammoW = 78.0;
     final spawnPos = Vector2(handX + dir * (ammoW * 0.5), handY);
     final ammo = WebAmmo(
@@ -622,6 +644,10 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
   void update(double dt) {
     super.update(dt);
 
+    if (swingCooldown > 0) {
+      swingCooldown = math.max(0.0, swingCooldown - dt);
+    }
+
     // Timers: Invulnerability, Shield, Skill Cooldown & Fast Web Fluid Regeneration
     if (_platformDropTimer > 0) {
       _platformDropTimer = math.max(0.0, _platformDropTimer - dt);
@@ -631,7 +657,7 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
     }
 
     if (activeGodMode) {
-      health = maxHealth;
+      health = effectiveMaxHealth;
       webFluid = maxWebFluid.toDouble();
       skill1Cooldown = 0.0;
     } else {
@@ -754,6 +780,12 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
   }
 
   void _updateWebPhysics(double dt) {
+    _currentSwingDuration += dt;
+    if (maxSwingDuration != null && _currentSwingDuration >= maxSwingDuration!) {
+      releaseWeb();
+      return;
+    }
+
     final anchor = webAnchor!;
     final isMoving = _moveInput != 0;
 
@@ -808,6 +840,32 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
     if (position.y >= groundLevel) {
       position.y = groundLevel;
       releaseWeb();
+    }
+
+    // Solid building wall collision during swing: prevent clipping through below rooftop
+    if (parent != null) {
+      final platforms = parent!.children.whereType<WarehousePlatform>();
+      final halfW = size.x * 0.28;
+      for (final plat in platforms) {
+        if (plat.size.y <= 60.0) continue; // skip thin catwalks
+        final platLeft = plat.position.x;
+        final platRight = platLeft + plat.size.x;
+        final platTop = plat.position.y;
+        final platBottom = platTop + plat.size.y;
+
+        if (position.y > platTop + 4.0 && position.y - size.y < platBottom) {
+          if (position.x + halfW > platLeft && position.x - halfW < platRight) {
+            final midX = (platLeft + platRight) / 2;
+            if (position.x < midX) {
+              position.x = platLeft - halfW;
+              if (angularVelocity > 0) angularVelocity = -angularVelocity * 0.4;
+            } else {
+              position.x = platRight + halfW;
+              if (angularVelocity < 0) angularVelocity = -angularVelocity * 0.4;
+            }
+          }
+        }
+      }
     }
 
     // Clamp horizontally to image boundaries [0, worldWidth]
@@ -884,6 +942,32 @@ class Spidey extends PositionComponent with CollisionCallbacks, HasGameReference
     }
 
     position += velocity * dt;
+
+    // Solid building wall collision during movement: prevent passing through below rooftop
+    if (parent != null) {
+      final platforms = parent!.children.whereType<WarehousePlatform>();
+      final halfW = size.x * 0.28;
+      for (final plat in platforms) {
+        if (plat.size.y <= 60.0) continue; // skip thin catwalks
+        final platLeft = plat.position.x;
+        final platRight = platLeft + plat.size.x;
+        final platTop = plat.position.y;
+        final platBottom = platTop + plat.size.y;
+
+        if (position.y > platTop + 4.0 && position.y - size.y < platBottom) {
+          if (position.x + halfW > platLeft && position.x - halfW < platRight) {
+            final midX = (platLeft + platRight) / 2;
+            if (position.x < midX) {
+              position.x = platLeft - halfW;
+              if (velocity.x > 0) velocity.x = 0;
+            } else {
+              position.x = platRight + halfW;
+              if (velocity.x < 0) velocity.x = 0;
+            }
+          }
+        }
+      }
+    }
 
     // Hard boundary: Spidey will never fall below the ground surface
     if (position.y >= groundLevel) {

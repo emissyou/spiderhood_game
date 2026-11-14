@@ -109,7 +109,8 @@ class PickupDrop extends PositionComponent with CollisionCallbacks, HasGameRefer
   void _applyToPlayer(Spidey player) {
     switch (type) {
       case DropType.heal:
-        player.health = math.min(player.health + 1, Spidey.maxHealth);
+        if (!player.allowHealthRegen) return;
+        player.health = math.min(player.health + 1, player.effectiveMaxHealth);
         AudioManager.instance.playPunch();
         parent?.add(
           DamageNumber(

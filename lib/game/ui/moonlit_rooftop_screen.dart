@@ -46,7 +46,16 @@ class _MoonlitRooftopScreenState extends State<MoonlitRooftopScreen> {
     _game.onMissionComplete = () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ModeSelectScreen()),
+          PageRouteBuilder(
+            pageBuilder: (context, anim1, anim2) => const StoryBlackoutScreen(
+              nextScreen: StoryPart2Screen(),
+              duration: Duration(milliseconds: 800),
+            ),
+            transitionsBuilder: (context, anim1, anim2, child) {
+              return FadeTransition(opacity: anim1, child: child);
+            },
+            transitionDuration: const Duration(milliseconds: 400),
+          ),
         );
       }
     };

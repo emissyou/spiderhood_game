@@ -277,8 +277,14 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
     }
 
     health -= actualDamage;
-    _hurtTimer = 0.24;
-    animPose = BossAnimPose.hurt;
+    // Poise/hyper-armor: If boss is currently punching, kicking, or casting skill,
+    // do not interrupt the attack with hurt flinch! Boss attacks through damage.
+    if (animPose != BossAnimPose.punching &&
+        animPose != BossAnimPose.kicking &&
+        animPose != BossAnimPose.skill) {
+      _hurtTimer = 0.16;
+      animPose = BossAnimPose.hurt;
+    }
 
     // Small crisp damage number directly above boss head
     parent?.add(
@@ -456,13 +462,7 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
 
     // 7. Active Combat & Enraged Combat: chase player, jump between platforms, punch & kick
     if (bossState == BossState.combat || bossState == BossState.enragedCombat) {
-      if (_hurtTimer > 0) {
-        _hurtTimer -= dt;
-        animPose = BossAnimPose.hurt;
-        _applyMovementAndPhysics(dt);
-        return;
-      }
-
+      // Allow active boss attacks to execute and finish even while taking damage
       if (animPose == BossAnimPose.punching || animPose == BossAnimPose.kicking) {
         _attackTimer -= dt;
         _updateAnimation(dt, 0.10);
@@ -473,6 +473,10 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
         return;
       }
 
+      if (_hurtTimer > 0) {
+        _hurtTimer -= dt;
+      }
+
       if (parent != null && game is WarehouseGame) {
         final player = (game as WarehouseGame).player;
         final dx = player.position.x - position.x;
@@ -480,8 +484,9 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
 
         patrolDirection = dx >= 0 ? 1.0 : -1.0;
 
-        // In close range (< 42px horizontal, < 26px vertical): Attack!
-        if (dx.abs() < 42.0 && dy.abs() < 26.0) {
+        // In close range (< 46px horizontal, < 30px vertical): Attack!
+        // Even when taking damage, the boss still attacks when off cooldown!
+        if (dx.abs() < 46.0 && dy.abs() < 30.0) {
           velocity.x = 0;
           if (_attackCooldown <= 0) {
             animPose = _random.nextBool() ? BossAnimPose.punching : BossAnimPose.kicking;
@@ -489,6 +494,7 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
             _attackCooldown = hasTriggeredEnrage ? 0.95 : 1.35;
             _animTimer = 0.0;
             _animIndex = 0;
+            _hurtTimer = 0.0; // Strike immediately overrides flinch!
             AudioManager.instance.playPunch();
 
             // Deal critical damage when enraged!
@@ -498,11 +504,22 @@ class ViperBoss extends PositionComponent with CollisionCallbacks, HasGameRefere
             player.takeDamage(dmg);
             _applyMovementAndPhysics(dt);
             return;
+          } else {
+            // Still in close melee range but waiting for attack cooldown
+            if (_hurtTimer > 0) {
+              animPose = BossAnimPose.hurt;
+            } else {
+              animPose = BossAnimPose.idle;
+            }
           }
         } else {
           final curChaseSpeed = (hasTriggeredEnrage ? (chaseSpeed * 1.25) : chaseSpeed) * speedFactor;
           velocity.x = patrolDirection * curChaseSpeed;
-          animPose = BossAnimPose.running;
+          if (_hurtTimer > 0) {
+            animPose = BossAnimPose.hurt;
+          } else {
+            animPose = BossAnimPose.running;
+          }
 
           if (isGrounded && _jumpCooldown <= 0 && _webSlowTimer <= 0) {
             // Gap jump between platforms

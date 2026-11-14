@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/audio_manager.dart';
 import '../services/story_progress_service.dart';
+import 'harbor_screen.dart';
 import 'loading_screen.dart';
 import 'moonlit_rooftop_screen.dart';
 import 'pixel_widgets.dart';
@@ -102,6 +103,26 @@ class _ModeSelectScreenState extends State<ModeSelectScreen> {
                         if (context.mounted) {
                           Navigator.of(context).pushReplacement(
                             MaterialPageRoute(builder: (_) => const MoonlitRooftopScreen()),
+                          );
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Choice 3: Part 3
+                    _buildPartSelectionTile(
+                      partNumber: 3,
+                      title: 'PART 3: MANHATTAN HARBOR DOCKS',
+                      subtitle: 'Waterfront cargo docks, container cranes & ship deck combat',
+                      accentColor: const Color(0xFFF59E0B),
+                      isActive: story.currentPart == 3,
+                      onTap: () async {
+                        Navigator.of(ctx).pop();
+                        AudioManager.instance.resumeBgmIfSuspended();
+                        await story.saveProgress(3);
+                        if (context.mounted) {
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(builder: (_) => const HarborScreen()),
                           );
                         }
                       },
@@ -320,36 +341,58 @@ class _ModeSelectScreenState extends State<ModeSelectScreen> {
                           builder: (context, constraints) {
                             final isWide = constraints.maxWidth > 580;
 
-                            final isPart2 = StoryProgressService.instance.currentPart == 2;
+                            final currentPart = StoryProgressService.instance.currentPart;
+                            final isPart3 = currentPart == 3;
+                            final isPart2 = currentPart == 2;
 
                             final storyCard = _buildModeCard(
                               context: context,
                               title: 'STORY MODE',
-                              badgeText: isPart2 ? 'PART 2: ROOFTOPS' : 'CHAPTER 1: THE VIPERS',
-                              badgeColor: isPart2 ? const Color(0xFF38BDF8) : PixelColors.yellow,
+                              badgeText: isPart3
+                                  ? 'PART 3: HARBOR DOCKS'
+                                  : (isPart2 ? 'PART 2: ROOFTOPS' : 'CHAPTER 1: THE VIPERS'),
+                              badgeColor: isPart3
+                                  ? const Color(0xFFF59E0B)
+                                  : (isPart2 ? const Color(0xFF38BDF8) : PixelColors.yellow),
                               badgeTextColor: Colors.black,
                               icon: Icons.menu_book,
-                              accentColor: const Color(0xFF00F0FF),
-                              description: isPart2
-                                  ? 'The Viper Warlord fled across Manhattan! Scale the skyscrapers under the moonlight and neutralize the armed marksman!'
-                                  : 'Stop The Vipers from constructing Vulture\'s catastrophic weapon. Infiltrate clandestine bases starting with the Abandoned Factory!',
-                              features: isPart2
+                              accentColor: isPart3 ? const Color(0xFFF59E0B) : const Color(0xFF00F0FF),
+                              description: isPart3
+                                  ? 'The Viper Syndicate is smuggling illegal munitions through the docks! Infiltrate Manhattan Harbor, swing across cargo cranes, and neutralize the patrol!'
+                                  : (isPart2
+                                      ? 'The Viper Warlord fled across Manhattan! Scale the skyscrapers under the moonlight and neutralize the armed marksman!'
+                                      : 'Stop The Vipers from constructing Vulture\'s catastrophic weapon. Infiltrate clandestine bases starting with the Abandoned Factory!'),
+                              features: isPart3
                                   ? [
-                                      '• Chapter 1: The Viper Syndicate',
-                                      '• Checkpoint: Moonlit Rooftop Cityscape',
-                                      '• Marksman Minion & Skyline Combat',
+                                      '• Chapter 3: Manhattan Harbor Docks',
+                                      '• Checkpoint: Cargo Cranes & Waterfront Piers',
+                                      '• Armed Patrols & Cargo Ship Combat',
                                     ]
-                                  : [
-                                      '• Chapter 1: The Viper Syndicate',
-                                      '• Bank Heist Mystery & Device Map',
-                                      '• Scenario 1: The Abandoned Factory',
-                                    ],
-                              buttonText: isPart2 ? 'CONTINUE (PART 2) ▶' : 'PLAY STORY MODE ▶',
-                              buttonColor: const Color(0xFF00F0FF),
+                                  : (isPart2
+                                      ? [
+                                          '• Chapter 1: The Viper Syndicate',
+                                          '• Checkpoint: Moonlit Rooftop Cityscape',
+                                          '• Marksman Minion & Skyline Combat',
+                                        ]
+                                      : [
+                                          '• Chapter 1: The Viper Syndicate',
+                                          '• Bank Heist Mystery & Device Map',
+                                          '• Scenario 1: The Abandoned Factory',
+                                        ]),
+                              buttonText: isPart3
+                                  ? 'CONTINUE (PART 3) ▶'
+                                  : (isPart2 ? 'CONTINUE (PART 2) ▶' : 'PLAY STORY MODE ▶'),
+                              buttonColor: isPart3 ? const Color(0xFFF59E0B) : const Color(0xFF00F0FF),
                               buttonTextColor: Colors.black,
                               onPressed: () {
                                 AudioManager.instance.resumeBgmIfSuspended();
-                                if (isPart2) {
+                                if (isPart3) {
+                                  Navigator.of(context).pushReplacement(
+                                    MaterialPageRoute(
+                                      builder: (_) => const HarborScreen(),
+                                    ),
+                                  );
+                                } else if (isPart2) {
                                   Navigator.of(context).pushReplacement(
                                     MaterialPageRoute(
                                       builder: (_) => const MoonlitRooftopScreen(),
@@ -367,23 +410,94 @@ class _ModeSelectScreenState extends State<ModeSelectScreen> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   PixelButton(
-                                    text: isPart2 ? 'STORY OPTIONS / RESTART ⚙' : 'STORY OPTIONS ⚙',
-                                    color: Colors.white12,
-                                    textColor: Colors.white,
-                                    fontSize: 10,
+                                    text: 'CHOOSE PART (1, 2, OR 3) ❖',
+                                    color: const Color(0xFF38BDF8),
+                                    textColor: Colors.black,
+                                    fontSize: 10.5,
                                     isFullWidth: true,
                                     padding: const EdgeInsets.symmetric(vertical: 8),
                                     onPressed: () => _showStoryOptionsDialog(context),
                                   ),
                                   const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: PixelButton(
+                                          text: 'PART 1 ▶',
+                                          color: const Color(0xFF10B981),
+                                          textColor: Colors.black,
+                                          fontSize: 9.0,
+                                          padding: const EdgeInsets.symmetric(vertical: 7),
+                                          onPressed: () async {
+                                            AudioManager.instance.resumeBgmIfSuspended();
+                                            await StoryProgressService.instance.saveProgress(1);
+                                            if (context.mounted) {
+                                              Navigator.of(context).pushReplacement(
+                                                MaterialPageRoute(builder: (_) => const StoryIntroScreen()),
+                                              );
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: PixelButton(
+                                          text: 'PART 2 ▶',
+                                          color: const Color(0xFF38BDF8),
+                                          textColor: Colors.black,
+                                          fontSize: 9.0,
+                                          padding: const EdgeInsets.symmetric(vertical: 7),
+                                          onPressed: () async {
+                                            AudioManager.instance.resumeBgmIfSuspended();
+                                            await StoryProgressService.instance.saveProgress(2);
+                                            if (context.mounted) {
+                                              Navigator.of(context).pushReplacement(
+                                                MaterialPageRoute(builder: (_) => const MoonlitRooftopScreen()),
+                                              );
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: PixelButton(
+                                          text: 'PART 3 ▶',
+                                          color: const Color(0xFFF59E0B),
+                                          textColor: Colors.black,
+                                          fontSize: 9.0,
+                                          padding: const EdgeInsets.symmetric(vertical: 7),
+                                          onPressed: () async {
+                                            AudioManager.instance.resumeBgmIfSuspended();
+                                            await StoryProgressService.instance.saveProgress(3);
+                                            if (context.mounted) {
+                                              Navigator.of(context).pushReplacement(
+                                                MaterialPageRoute(builder: (_) => const HarborScreen()),
+                                              );
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
                                   PixelButton(
-                                    text: 'CHOOSE PART (1 OR 2) ❖',
-                                    color: const Color(0xFF38BDF8),
-                                    textColor: Colors.black,
+                                    text: 'RESTART STORY ↺',
+                                    color: const Color(0xFFEF4444),
+                                    textColor: Colors.white,
                                     fontSize: 10,
                                     isFullWidth: true,
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                    onPressed: () => _showStoryOptionsDialog(context),
+                                    padding: const EdgeInsets.symmetric(vertical: 7),
+                                    onPressed: () async {
+                                      AudioManager.instance.resumeBgmIfSuspended();
+                                      await StoryProgressService.instance.resetStory();
+                                      if (context.mounted) {
+                                        Navigator.of(context).pushReplacement(
+                                          MaterialPageRoute(
+                                            builder: (_) => const StoryIntroScreen(),
+                                          ),
+                                        );
+                                      }
+                                    },
                                   ),
                                 ],
                               ),

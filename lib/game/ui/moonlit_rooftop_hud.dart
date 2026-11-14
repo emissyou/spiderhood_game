@@ -2,10 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:spideyhood/game/actors/player/spidey.dart';
 import 'package:spideyhood/game/services/audio_manager.dart';
-import 'package:spideyhood/game/services/story_progress_service.dart';
 import 'package:spideyhood/game/story/moonlit_rooftop_game.dart';
 import 'package:spideyhood/game/ui/pixel_widgets.dart';
-import 'package:spideyhood/game/ui/story_intro_screen.dart';
 
 /// Interactive HUD and controls overlay for Moonlit Rooftop Cityscape.
 class MoonlitRooftopHud extends StatefulWidget {
@@ -75,6 +73,42 @@ class _MoonlitRooftopHudState extends State<MoonlitRooftopHud> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 5),
+
+                // Mission Objective Banner: Defeat All Enemies
+                PixelContainer(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  backgroundColor: const Color(0xFF1E1B4B),
+                  borderColor: game.defeatedEnemies >= game.totalEnemies
+                      ? const Color(0xFF22C55E)
+                      : const Color(0xFFA855F7),
+                  borderWidth: 1.5,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        game.defeatedEnemies >= game.totalEnemies
+                            ? Icons.check_circle
+                            : Icons.gps_fixed,
+                        color: game.defeatedEnemies >= game.totalEnemies
+                            ? const Color(0xFF22C55E)
+                            : const Color(0xFFA855F7),
+                        size: 13,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        'MISSION: DEFEAT ALL ENEMIES (${game.defeatedEnemies}/${game.totalEnemies})',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w900,
+                          fontFamily: 'monospace',
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 6),
 
                 // 5 Hearts Health Bar
@@ -86,7 +120,7 @@ class _MoonlitRooftopHudState extends State<MoonlitRooftopHud> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      for (int i = 0; i < Spidey.maxHealth; i++)
+                      for (int i = 0; i < game.player.effectiveMaxHealth; i++)
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 2.0),
                           child: Icon(
@@ -286,9 +320,13 @@ class _MoonlitRooftopHudState extends State<MoonlitRooftopHud> {
                 const SizedBox(width: 8),
                 _buildActionButton(
                   label: 'SWING',
-                  subtitle: '${game.player.webFluid.clamp(0, 10).toInt()}/10 WEB',
-                  color: game.player.webFluid < 1.0 ? const Color(0xFF374151) : const Color(0xFF028090),
-                  onTap: () => game.shootWebAhead(),
+                  subtitle: game.player.swingCooldown > 0
+                      ? '${game.player.swingCooldown.toStringAsFixed(1)}s'
+                      : '${game.player.webFluid.clamp(0, 10).toInt()}/10 WEB',
+                  color: (game.player.webFluid < 1.0 || game.player.swingCooldown > 0)
+                      ? const Color(0xFF374151)
+                      : const Color(0xFF028090),
+                  onTap: game.player.swingCooldown > 0 ? null : () => game.shootWebAhead(),
                 ),
               ],
             ),
@@ -363,16 +401,6 @@ class _MoonlitRooftopHudState extends State<MoonlitRooftopHud> {
                             ),
                             const SizedBox(height: 10),
                             PixelButton(
-                              text: 'RESTART STORY FROM BEGINNING ↺',
-                              color: const Color(0xFFEF4444),
-                              textColor: Colors.white,
-                              fontSize: 11,
-                              onPressed: () {
-                                game.onRestartStory?.call();
-                              },
-                            ),
-                            const SizedBox(height: 10),
-                            PixelButton(
                               text: game.player.activeGodMode
                                   ? '⚡ GODMODE: ON (IMMORTAL)'
                                   : '⚡ GODMODE: OFF',
@@ -385,22 +413,6 @@ class _MoonlitRooftopHudState extends State<MoonlitRooftopHud> {
                                 setState(() {
                                   game.player.isGodMode = !game.player.activeGodMode;
                                 });
-                              },
-                            ),
-                            const SizedBox(height: 10),
-                            PixelButton(
-                              text: 'GO TO PART 1 (WAREHOUSE) ▶',
-                              color: const Color(0xFF10B981),
-                              textColor: Colors.black,
-                              fontSize: 11,
-                              onPressed: () async {
-                                AudioManager.instance.resumeBgmIfSuspended();
-                                await StoryProgressService.instance.saveProgress(1);
-                                if (context.mounted) {
-                                  Navigator.of(context).pushReplacement(
-                                    MaterialPageRoute(builder: (_) => const StoryIntroScreen()),
-                                  );
-                                }
                               },
                             ),
                             const SizedBox(height: 10),

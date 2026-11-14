@@ -92,6 +92,7 @@ flutter:
     - assets/images/story/part_1/starting_scenario/
     - assets/images/story/part_1/escape_scenario/
     - assets/images/story/part_1/after_escape_scenario/
+    - assets/images/story/part_2/
     - assets/images/story/enemy/minion/
     - assets/images/story/enemy/minion/idle/
     - assets/images/story/enemy/minion/running/

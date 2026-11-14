@@ -194,78 +194,126 @@ class _LoadingScreenState extends State<LoadingScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Animated Character Preview Frame
-                    PixelContainer(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      backgroundColor: const Color(0xFF1B2038),
-                      borderColor: PixelColors.yellow,
-                      borderWidth: 3,
-                      child: Column(
-                        children: [
-                          SizedBox(
-                            height: 70,
-                            width: 60,
-                            child: Image.asset(
-                              'assets/images/player/idle/$_idleFrame.png',
-                              fit: BoxFit.contain,
-                              filterQuality: FilterQuality.none,
-                              errorBuilder: (context, error, stackTrace) => const Icon(
-                                Icons.person,
-                                color: PixelColors.red,
-                                size: 50,
-                              ),
-                            ),
+                    // Animated Character Preview Frame with Neon Glow
+                    Container(
+                      decoration: BoxDecoration(
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.18),
+                            blurRadius: 28,
+                            spreadRadius: 2,
                           ),
-                          const SizedBox(height: 10),
-                          Text(
-                            _statusText,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: PixelColors.yellow,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              fontFamily: 'monospace',
-                              letterSpacing: 0.9,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          // Pixel segmented progress bar
-                          PixelProgressBar(
-                            progress: _progress,
-                            height: 16,
-                            fillColor: PixelColors.green,
-                            totalSegments: 18,
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'STATUS: LOADING',
-                                style: TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 10,
-                                  fontFamily: 'monospace',
-                                ),
-                              ),
-                              Text(
-                                '${(_progress * 100).toInt()}%',
-                                style: const TextStyle(
-                                  color: PixelColors.green,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w900,
-                                  fontFamily: 'monospace',
-                                ),
-                              ),
-                            ],
+                          BoxShadow(
+                            color: PixelColors.yellow.withValues(alpha: 0.12),
+                            blurRadius: 16,
+                            spreadRadius: 0,
                           ),
                         ],
+                      ),
+                      child: PixelContainer(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                        backgroundColor: const Color(0xFF14192D),
+                        borderColor: PixelColors.yellow,
+                        borderWidth: 2.5,
+                        child: Column(
+                          children: [
+                            Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                // Subtle floor spotlight
+                                Container(
+                                  width: 80,
+                                  height: 80,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: RadialGradient(
+                                      colors: [
+                                        const Color(0xFF38BDF8).withValues(alpha: 0.22),
+                                        Colors.transparent,
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                Column(
+                                  children: [
+                                    SizedBox(
+                                      height: 72,
+                                      width: 60,
+                                      child: Image.asset(
+                                        'assets/images/player/idle/$_idleFrame.png',
+                                        fit: BoxFit.contain,
+                                        filterQuality: FilterQuality.none,
+                                        errorBuilder: (context, error, stackTrace) => const Icon(
+                                          Icons.person,
+                                          color: PixelColors.red,
+                                          size: 50,
+                                        ),
+                                      ),
+                                    ),
+                                    // Drop shadow under feet
+                                    Container(
+                                      width: 36,
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                        color: Colors.black45,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              _statusText,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: PixelColors.yellow,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                fontFamily: 'monospace',
+                                letterSpacing: 0.9,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            // Pixel segmented progress bar
+                            PixelProgressBar(
+                              progress: _progress,
+                              height: 16,
+                              fillColor: PixelColors.green,
+                              totalSegments: 18,
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'STATUS: LOADING',
+                                  style: TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 10,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                                Text(
+                                  '${(_progress * 100).toInt()}%',
+                                  style: const TextStyle(
+                                    color: PixelColors.green,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w900,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
 
                     const SizedBox(height: 20),
 
-                    // Start Action Button (Flashing when ready)
+                    // Start Action Button (Appears when ready, clean pulsing retro design)
                     if (_isReady)
                       PixelButton(
                         text: '▶ PRESS START',
@@ -273,18 +321,41 @@ class _LoadingScreenState extends State<LoadingScreen> {
                         color: PixelColors.green,
                         textColor: Colors.black,
                         fontSize: 16,
-                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                        padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 14),
                         onPressed: _proceedToModeSelect,
                       )
                     else
-                      PixelButton(
-                        text: 'SKIP LOADING',
-                        icon: Icons.fast_forward,
-                        color: Colors.white12,
-                        textColor: Colors.white70,
-                        fontSize: 12,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        onPressed: _proceedToModeSelect,
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black38,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.white12, width: 1.5),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
+                              ),
+                            ),
+                            SizedBox(width: 10),
+                            Text(
+                              'LOADING ASSETS...',
+                              style: TextStyle(
+                                color: Color(0xFF94A3B8),
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'monospace',
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                   ],
                 ),

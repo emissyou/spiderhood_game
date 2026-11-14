@@ -59,7 +59,7 @@ void main() {
 
       expect(find.text('SPIDEYHOOD'), findsWidgets);
       expect(find.byType(PixelProgressBar), findsOneWidget);
-      expect(find.text('SKIP LOADING'), findsOneWidget);
+      expect(find.text('LOADING ASSETS...'), findsOneWidget);
 
       // Fast-forward 3 seconds to complete loading
       await tester.pump(const Duration(seconds: 3));

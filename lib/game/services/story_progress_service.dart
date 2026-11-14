@@ -7,9 +7,19 @@ class StoryProgressService {
   StoryProgressService._internal();
   static final StoryProgressService instance = StoryProgressService._internal();
 
-  /// Current active story part (1 = Warehouse, 2 = Moonlit Rooftop Cityscape)
+  /// Current active story part (1 = Warehouse, 2 = Moonlit Rooftop Cityscape, 3 = Manhattan Harbor)
   int _currentPart = 1;
   int get currentPart => _currentPart;
+
+  /// Highest part cleared / reached so far
+  int _maxPartReached = 1;
+  int get maxPartReached => _maxPartReached;
+
+  /// Whether a part is unlocked for manual selection
+  bool isPartUnlocked(int part) => part <= _maxPartReached;
+
+  /// Whether a part has been completed
+  bool isPartCleared(int part) => _maxPartReached > part;
 
   /// Whether progress has been loaded from storage
   bool _isLoaded = false;
@@ -36,8 +46,10 @@ class StoryProgressService {
         final content = await file.readAsString();
         final data = jsonDecode(content) as Map<String, dynamic>;
         _currentPart = (data['currentPart'] as num?)?.toInt() ?? 1;
+        _maxPartReached = (data['maxPartReached'] as num?)?.toInt() ?? _currentPart;
         if (_currentPart < 1) _currentPart = 1;
-        if (_currentPart > 2) _currentPart = 2;
+        if (_currentPart > 3) _currentPart = 3;
+        if (_maxPartReached < _currentPart) _maxPartReached = _currentPart;
       }
     } catch (_) {
       // In-memory fallback
@@ -48,13 +60,17 @@ class StoryProgressService {
 
   /// Sets current story part and persists
   Future<void> setPart(int part) async {
-    _currentPart = part.clamp(1, 2);
+    _currentPart = part.clamp(1, 3);
+    if (_currentPart > _maxPartReached) {
+      _maxPartReached = _currentPart;
+    }
     _isLoaded = true;
     try {
       final file = _getSaveFile();
       if (file != null) {
         await file.writeAsString(jsonEncode({
           'currentPart': _currentPart,
+          'maxPartReached': _maxPartReached,
           'updatedAt': DateTime.now().toIso8601String(),
         }));
       }
@@ -66,17 +82,29 @@ class StoryProgressService {
 
   /// Marks Part 1 as completed and advances to Part 2 (Moonlit Rooftop)
   Future<void> completePart1() async {
+    _maxPartReached = 2;
     await setPart(2);
   }
 
+  /// Marks Part 2 as completed and advances to Part 3 (Manhattan Harbor)
+  Future<void> completePart2() async {
+    _maxPartReached = 3;
+    await setPart(3);
+  }
+
   /// Resets story progression back to Chapter 1, Part 1
-  Future<void> resetStory() async {
+  Future<void> resetStory({bool resetAllUnlocked = false}) async {
+    if (resetAllUnlocked) {
+      _maxPartReached = 1;
+    }
     await setPart(1);
   }
 
   /// Label for current part
   String get currentPartTitle {
     switch (_currentPart) {
+      case 3:
+        return 'PART 3: MANHATTAN HARBOR';
       case 2:
         return 'PART 2: MOONLIT ROOFTOP';
       case 1:

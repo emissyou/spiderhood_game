@@ -1,9 +1,10 @@
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
-/// Small floating damage number (just the clean number, e.g. "18" or "32").
+/// Small floating damage number (e.g. "18", "32", or custom label like "SHIELDED").
 class DamageNumber extends PositionComponent {
   final int amount;
+  final String? label;
   final Color color;
   final double maxDuration;
 
@@ -11,12 +12,13 @@ class DamageNumber extends PositionComponent {
 
   DamageNumber({
     required this.amount,
+    this.label,
     required Vector2 position,
     this.color = const Color(0xFFFDE047),
     this.maxDuration = 0.55,
   }) : super(
           position: position,
-          size: Vector2(24, 14),
+          size: Vector2(36, 14),
           anchor: Anchor.center,
         );
 
@@ -38,11 +40,12 @@ class DamageNumber extends PositionComponent {
     super.render(canvas);
     final opacity = (1.0 - (_elapsed / maxDuration)).clamp(0.0, 1.0);
 
+    final text = label ?? '$amount';
     final textSpan = TextSpan(
-      text: '$amount',
+      text: text,
       style: TextStyle(
         color: color.withValues(alpha: opacity),
-        fontSize: 10.0,
+        fontSize: label != null ? 8.5 : 10.0,
         fontWeight: FontWeight.w900,
         fontFamily: 'monospace',
         shadows: [

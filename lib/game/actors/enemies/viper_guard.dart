@@ -40,6 +40,7 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
   final double patrolRange;
   final double originX;
   final double groundLevel;
+  final double standingOffsetY;
   final VoidCallback? onDefeated;
 
   Vector2 velocity = Vector2.zero();
@@ -69,17 +70,17 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
 
   static const List<_MinionFrameData> _idleData = [
     _MinionFrameData(imgW: 77, imgH: 138, centerX: 33.0, feetY: 136.0, scaleRefH: 126.0),
-    _MinionFrameData(imgW: 71, imgH: 127, centerX: 34.0, feetY: 126.0, scaleRefH: 126.0),
-    _MinionFrameData(imgW: 72, imgH: 128, centerX: 34.5, feetY: 126.0, scaleRefH: 126.0),
-    _MinionFrameData(imgW: 71, imgH: 127, centerX: 33.5, feetY: 125.0, scaleRefH: 126.0),
-    _MinionFrameData(imgW: 71, imgH: 127, centerX: 34.0, feetY: 125.0, scaleRefH: 126.0),
+    _MinionFrameData(imgW: 71, imgH: 127, centerX: 34.0, feetY: 136.0, scaleRefH: 126.0),
+    _MinionFrameData(imgW: 72, imgH: 128, centerX: 34.5, feetY: 136.0, scaleRefH: 126.0),
+    _MinionFrameData(imgW: 71, imgH: 127, centerX: 33.5, feetY: 136.0, scaleRefH: 126.0),
+    _MinionFrameData(imgW: 71, imgH: 127, centerX: 34.0, feetY: 136.0, scaleRefH: 126.0),
   ];
 
   static const List<_MinionFrameData> _runData = [
-    _MinionFrameData(imgW: 108, imgH: 135, centerX: 53.5, feetY: 122.0, scaleRefH: 126.0),
-    _MinionFrameData(imgW: 98, imgH: 123, centerX: 48.5, feetY: 121.0, scaleRefH: 126.0),
-    _MinionFrameData(imgW: 92, imgH: 115, centerX: 45.5, feetY: 112.0, scaleRefH: 126.0),
-    _MinionFrameData(imgW: 93, imgH: 116, centerX: 46.5, feetY: 111.0, scaleRefH: 126.0),
+    _MinionFrameData(imgW: 108, imgH: 135, centerX: 53.5, feetY: 134.0, scaleRefH: 126.0),
+    _MinionFrameData(imgW: 98, imgH: 123, centerX: 48.5, feetY: 134.0, scaleRefH: 126.0),
+    _MinionFrameData(imgW: 92, imgH: 115, centerX: 45.5, feetY: 134.0, scaleRefH: 126.0),
+    _MinionFrameData(imgW: 93, imgH: 116, centerX: 46.5, feetY: 134.0, scaleRefH: 126.0),
   ];
 
   static const List<_MinionFrameData> _punchData = [
@@ -118,6 +119,7 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
     Vector2? size,
     this.patrolRange = 160.0,
     this.groundLevel = 480.0,
+    this.standingOffsetY = 0.0,
     this.onDefeated,
   })  : originX = position.x,
         super(
@@ -288,77 +290,114 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
 
     // Intelligent AI: follow / chase the player, jump to platform, and attack
     bool chasingPlayer = false;
-    if (parent != null && game is WarehouseGame) {
-      final warehouse = game as WarehouseGame;
-      final player = warehouse.player;
+    final player = parent?.children.whereType<Spidey>().firstOrNull;
+
+    if (parent != null && player != null && !player.isDefeated) {
       final dx = player.position.x - position.x;
       final dy = player.position.y - position.y; // Negative if player is on a higher level
 
-      // At start, all minions are lined up facing the boss and not moving
-      // They only break formation and move when the player gets close or attacks
-      if (!warehouse.hasPlayerEngaged) {
-        velocity.x = 0;
-        state = MinionState.idle;
-        if (dx.abs() < 260.0 && dy.abs() < 180.0 && !warehouse.isEntranceCutscene) {
-          warehouse.engagePlayer();
-        }
-      } else if (!warehouse.isEntranceCutscene &&
-          (warehouse.hasPlayerEngaged || warehouse.boss.hasTriggeredEscape || dx.abs() < 600.0)) {
-        chasingPlayer = true;
-        patrolDirection = dx >= 0 ? 1.0 : -1.0;
-
-        // If in close attack range (< 44px horizontally and < 28px vertically): Attack!
-        if (dx.abs() < 44.0 && dy.abs() < 28.0) {
+      if (game is WarehouseGame) {
+        final warehouse = game as WarehouseGame;
+        // At start, all minions are lined up facing the boss and not moving
+        // They only break formation and move when the player gets close or attacks
+        if (!warehouse.hasPlayerEngaged) {
           velocity.x = 0;
-          if (_attackCooldown <= 0) {
-            state = _random.nextBool() ? MinionState.punching : MinionState.kicking;
-            _attackTimer = 0.32;
-            _attackCooldown = 1.1;
-            _animTimer = 0.0;
-            _animIndex = 0;
-            AudioManager.instance.playPunch();
-            player.takeDamage(1); // Solid hit on player (takes damage even when standing still!)
-            return;
+          state = MinionState.idle;
+          if (dx.abs() < 260.0 && dy.abs() < 180.0 && !warehouse.isEntranceCutscene) {
+            warehouse.engagePlayer();
           }
-        } else {
-          // Move towards player
-          velocity.x = patrolDirection * chaseSpeed * speedFactor;
-          state = MinionState.running;
+        } else if (!warehouse.isEntranceCutscene &&
+            (warehouse.hasPlayerEngaged || warehouse.boss.hasTriggeredEscape || dx.abs() < 600.0)) {
+          chasingPlayer = true;
+          patrolDirection = dx >= 0 ? 1.0 : -1.0;
 
-          if (isGrounded && _jumpCooldown <= 0 && _webSlowTimer <= 0) {
-            // 1. GAP JUMP BETWEEN PLATFORMS:
-            // Left platform ends at x=360 (y=320), Center bridge starts at x=620 (y=364)
-            // Center bridge + right walkway are now joined (x=620..2010 at y=364) — no gap needed there
-            final isNearLeftEdge = (position.x >= 310.0 && position.x <= 365.0 && patrolDirection > 0);
-            final isNearCenterEdge = (position.x >= 615.0 && position.x <= 670.0 && patrolDirection < 0);
-            final playerAcrossGap = (position.y < 420.0 && player.position.y < 420.0 &&
-                ((position.x < 400.0 && player.position.x > 500.0) ||
-                 (position.x > 600.0 && player.position.x < 450.0)));
+          // If in close attack range (< 44px horizontally and < 28px vertically): Attack!
+          if (dx.abs() < 44.0 && dy.abs() < 28.0) {
+            velocity.x = 0;
+            if (_attackCooldown <= 0) {
+              state = _random.nextBool() ? MinionState.punching : MinionState.kicking;
+              _attackTimer = 0.32;
+              _attackCooldown = 1.1;
+              _animTimer = 0.0;
+              _animIndex = 0;
+              AudioManager.instance.playPunch();
+              player.takeDamage(1); // Solid hit on player
+              return;
+            }
+          } else {
+            // Move towards player
+            velocity.x = patrolDirection * chaseSpeed * speedFactor;
+            state = MinionState.running;
 
-            if ((isNearLeftEdge || isNearCenterEdge) && playerAcrossGap) {
-              velocity.y = isNearCenterEdge ? -580.0 : -520.0;
-              velocity.x = patrolDirection * 360.0;
-              isGrounded = false;
-              currentPlatform = null;
-              _jumpCooldown = 1.8;
-              AudioManager.instance.playJump();
+            if (isGrounded && _jumpCooldown <= 0 && _webSlowTimer <= 0) {
+              final isNearLeftEdge = (position.x >= 310.0 && position.x <= 365.0 && patrolDirection > 0);
+              final isNearCenterEdge = (position.x >= 615.0 && position.x <= 670.0 && patrolDirection < 0);
+              final playerAcrossGap = (position.y < 420.0 && player.position.y < 420.0 &&
+                  ((position.x < 400.0 && player.position.x > 500.0) ||
+                   (position.x > 600.0 && player.position.x < 450.0)));
+
+              if ((isNearLeftEdge || isNearCenterEdge) && playerAcrossGap) {
+                velocity.y = isNearCenterEdge ? -580.0 : -520.0;
+                velocity.x = patrolDirection * 360.0;
+                isGrounded = false;
+                currentPlatform = null;
+                _jumpCooldown = 1.8;
+                AudioManager.instance.playJump();
+              } else if (dy < -30.0 && dx.abs() < 240.0) {
+                velocity.y = player.position.y < 340.0 ? -700.0 : -630.0;
+                velocity.x = patrolDirection * 170.0;
+                isGrounded = false;
+                currentPlatform = null;
+                _jumpCooldown = 1.6;
+                AudioManager.instance.playJump();
+              } else if (dy > 50.0 && position.y < 400.0) {
+                velocity.y = -100.0;
+                velocity.x = patrolDirection * chaseSpeed * speedFactor;
+                isGrounded = false;
+                currentPlatform = null;
+                _jumpCooldown = 1.4;
+              }
             }
-            // 2. JUMP TO PLATFORM FROM FLOOR:
-            else if (dy < -30.0 && dx.abs() < 240.0) {
-              velocity.y = player.position.y < 340.0 ? -700.0 : -630.0;
-              velocity.x = patrolDirection * 170.0;
-              isGrounded = false;
-              currentPlatform = null;
-              _jumpCooldown = 1.6;
-              AudioManager.instance.playJump();
+          }
+        }
+      } else {
+        // Moonlit Rooftop Cityscape & other arenas:
+        // Engage player when player approaches this building
+        if (dx.abs() < 350.0 && dy.abs() < 120.0) {
+          chasingPlayer = true;
+          patrolDirection = dx >= 0 ? 1.0 : -1.0;
+
+          // If in close attack range: punch or kick Spidey!
+          if (dx.abs() < 46.0 && dy.abs() < 32.0) {
+            velocity.x = 0;
+            if (_attackCooldown <= 0) {
+              state = _random.nextBool() ? MinionState.punching : MinionState.kicking;
+              _attackTimer = 0.32;
+              _attackCooldown = 1.1;
+              _animTimer = 0.0;
+              _animIndex = 0;
+              AudioManager.instance.playPunch();
+              player.takeDamage(1);
+              return;
             }
-            // 3. JUMP / DROP DOWN TO FLOOR:
-            else if (dy > 50.0 && position.y < 400.0) {
-              velocity.y = -100.0;
+          } else {
+            // Keep guard safely on its rooftop platform without falling into pit
+            bool atPlatformEdge = false;
+            if (currentPlatform != null) {
+              final platLeft = currentPlatform!.position.x;
+              final platRight = platLeft + currentPlatform!.size.x;
+              if ((position.x <= platLeft + 14.0 && patrolDirection < 0) ||
+                  (position.x >= platRight - 14.0 && patrolDirection > 0)) {
+                atPlatformEdge = true;
+              }
+            }
+
+            if (atPlatformEdge) {
+              velocity.x = 0;
+              state = MinionState.idle;
+            } else {
               velocity.x = patrolDirection * chaseSpeed * speedFactor;
-              isGrounded = false;
-              currentPlatform = null;
-              _jumpCooldown = 1.4;
+              state = MinionState.running;
             }
           }
         }
@@ -384,7 +423,7 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
       final platLeft = currentPlatform!.position.x;
       final platRight = platLeft + currentPlatform!.size.x;
       if (position.x >= platLeft - 8.0 && position.x <= platRight + 8.0 && velocity.y >= 0) {
-        position.y = currentPlatform!.position.y;
+        position.y = currentPlatform!.position.y + standingOffsetY;
         velocity.y = 0;
         isGrounded = true;
       } else {
@@ -404,6 +443,16 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
       velocity.y = 0;
       isGrounded = true;
       currentPlatform = null;
+      // In rooftop levels (groundLevel > 600), falling off the building into the alley is fatal!
+      if (groundLevel > 600.0 && !isDefeated) {
+        isDefeated = true;
+        health = 0;
+        onDefeated?.call();
+        Future.microtask(() {
+          if (isMounted) removeFromParent();
+        });
+        return;
+      }
     }
 
     // Idle and running animation cycle
@@ -427,8 +476,8 @@ class ViperGuard extends PositionComponent with CollisionCallbacks, HasGameRefer
       final platTop = other.position.y;
       final guardBottom = position.y;
       // Land on top of platform surface cleanly
-      if (velocity.y >= 0 && guardBottom >= platTop - 6.0 && guardBottom <= platTop + 20.0) {
-        position.y = platTop;
+      if (velocity.y >= 0 && guardBottom >= platTop - 6.0 && guardBottom <= platTop + 24.0 + standingOffsetY) {
+        position.y = platTop + standingOffsetY;
         velocity.y = 0;
         isGrounded = true;
         currentPlatform = other;
